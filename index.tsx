@@ -5,7 +5,8 @@ import { GoogleGenAI } from "@google/genai";
 
 // --- Configuration & Constants ---
 const MODEL_NAME = "gemini-2.5-flash"; 
-const API_KEY = process.env.API_KEY || "";
+// Updated to prioritize the user's specific environment variable name
+const API_KEY = process.env['VITE_GOOGLE_GENAI_TOKEN'] || process.env.API_KEY || "";
 
 // --- Types ---
 interface LogEntry {
@@ -17,6 +18,12 @@ interface LogEntry {
 interface GroundingSource {
   title?: string;
   uri?: string;
+}
+
+interface ChatMessage {
+    role: 'user' | 'model';
+    text: string;
+    timestamp: string;
 }
 
 type RiskProfile = "conservative" | "moderate" | "aggressive";
@@ -45,6 +52,15 @@ const App = () => {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [lastSpokenText, setLastSpokenText] = useState("");
 
+  // Chat Feature State
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+      { role: 'model', text: 'سلام. من دستیار ارشد معاملاتی شما هستم. می‌توانید دستور دهید تا وضعیت بازار، اخبار فوری یا تحلیل‌های خاص را همین الان بررسی کنم.', timestamp: new Date().toLocaleTimeString('fa-IR') }
+  ]);
+  const [isChatThinking, setIsChatThinking] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,8 +81,6 @@ const App = () => {
       utterance.rate = 0.9;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
-      // Note: Browser support for 'fa-IR' voice varies. 
-      // Most browsers will read Persian text using a default voice if a specific Persian voice isn't found.
       utterance.lang = 'fa-IR'; 
       
       window.speechSynthesis.speak(utterance);
@@ -78,6 +92,14 @@ const App = () => {
           addLog("info", "تحلیل در کلیپ‌بورد کپی شد.");
       }
   };
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chatMessages, isChatOpen]);
 
   // --- Core Logic: Capture & Analyze ---
   const analyzeScreen = useCallback(async (isAuto = false) => {
@@ -210,6 +232,51 @@ const App = () => {
     }
   }, [isAnalyzing, lastAnalysisText, enableNews, riskProfile, tradingStyle, voiceEnabled, lastSpokenText, speak]);
 
+  // --- Chat Logic ---
+  const handleSendMessage = async () => {
+      if (!chatInput.trim() || isChatThinking) return;
+
+      const userMsg = chatInput;
+      setChatInput("");
+      setChatMessages(prev => [...prev, { role: 'user', text: userMsg, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+      setIsChatThinking(true);
+
+      try {
+          const ai = new GoogleGenAI({ apiKey: API_KEY });
+          
+          // Context for the chat (Aware of the visual analysis)
+          const context = lastAnalysisText 
+            ? `آخرین تحلیل تصویری که سیستم انجام داده این است: "${lastAnalysisText}". اگر کاربر سوالی راجع به نمودار فعلی پرسید از این اطلاعات استفاده کن.` 
+            : "هنوز تحلیل تصویری انجام نشده است.";
+
+          const systemInstruction = `
+            شما یک دستیار تریدر ارشد با ۲۰ سال سابقه هستید. نام شما 'آمنی‌تریدر' است.
+            ${context}
+            کاربر ممکن است از شما بخواهد اخبار را چک کنید یا نظر تخصصی بدهید.
+            پاسخ‌ها باید کوتاه، تخصصی و به زبان فارسی باشد.
+            اگر کاربر درخواست بررسی فوری اخبار یا وب را داشت، حتما از ابزار جستجو استفاده کن.
+          `;
+
+          const response = await ai.models.generateContent({
+              model: MODEL_NAME,
+              contents: [{ role: 'user', parts: [{ text: systemInstruction + "\n\n" + userMsg }] }],
+              config: {
+                  tools: [{ googleSearch: {} }] // Enable search for chat too
+              }
+          });
+
+          const responseText = response.text || "متاسفانه نتوانستم پاسخ دهم.";
+          
+          setChatMessages(prev => [...prev, { role: 'model', text: responseText, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+
+      } catch (err: any) {
+          setChatMessages(prev => [...prev, { role: 'model', text: `خطا در ارتباط: ${err.message}`, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+      } finally {
+          setIsChatThinking(false);
+      }
+  };
+
+
   // --- Effects ---
   useEffect(() => {
     if (autoMode && isCapturing) {
@@ -270,7 +337,7 @@ const App = () => {
 
   // --- UI Render ---
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-200 p-4 lg:p-6 font-sans flex flex-col gap-6">
+    <div className="min-h-screen bg-slate-950 text-slate-200 p-4 lg:p-6 font-sans flex flex-col gap-6 relative">
       
       {/* Header */}
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-800 pb-4 gap-4">
@@ -549,6 +616,105 @@ const App = () => {
 
         </div>
       </main>
+
+        {/* Chat Features: Floating Action Button & Chat Window */}
+        <div className="fixed bottom-6 left-6 z-50 flex flex-col items-end gap-4" dir="rtl">
+            
+            {/* Chat Window (Popup) */}
+            {isChatOpen && (
+                <div className="w-80 md:w-96 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-fadeIn mb-2" style={{ maxHeight: '600px', height: '500px' }}>
+                    
+                    {/* Chat Header */}
+                    <div className="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            <h3 className="text-sm font-bold text-slate-200">اتاق فرمان تریدر</h3>
+                        </div>
+                        <button onClick={() => setIsChatOpen(false)} className="text-slate-400 hover:text-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    {/* Messages Area */}
+                    <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-950/80 custom-scrollbar">
+                        {chatMessages.map((msg, idx) => (
+                            <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
+                                <div 
+                                    className={`max-w-[85%] rounded-lg p-3 text-sm leading-relaxed ${
+                                        msg.role === 'user' 
+                                            ? 'bg-blue-600/20 border border-blue-500/30 text-blue-100 rounded-tr-none' 
+                                            : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-none'
+                                    }`}
+                                >
+                                    {msg.text}
+                                </div>
+                                <span className="text-[10px] text-slate-600 mt-1 px-1">{msg.timestamp}</span>
+                            </div>
+                        ))}
+                        <div ref={chatEndRef} />
+                        
+                        {isChatThinking && (
+                             <div className="flex flex-col items-end animate-pulse">
+                                <div className="bg-slate-800 border border-slate-700 text-slate-400 text-xs px-3 py-2 rounded-lg rounded-tl-none">
+                                    در حال تفکر و بررسی...
+                                </div>
+                             </div>
+                        )}
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="bg-slate-800 p-3 border-t border-slate-700">
+                        <div className="flex gap-2">
+                             <input 
+                                type="text" 
+                                value={chatInput}
+                                onChange={(e) => setChatInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                placeholder="دستور یا سوال خود را بنویسید..."
+                                className="flex-grow bg-slate-950 text-slate-200 text-sm rounded border border-slate-700 px-3 py-2 focus:border-blue-500 outline-none"
+                                disabled={isChatThinking}
+                             />
+                             <button 
+                                onClick={handleSendMessage}
+                                disabled={isChatThinking || !chatInput.trim()}
+                                className="bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 text-white p-2 rounded transition-colors"
+                             >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                                </svg>
+                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Toggle Button (FAB) */}
+            <button 
+                onClick={() => setIsChatOpen(!isChatOpen)}
+                className="bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-lg shadow-blue-900/40 transition-transform hover:scale-105 flex items-center justify-center group relative"
+            >
+                {!isChatOpen ? (
+                     <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                     </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                )}
+                
+                {/* Notification Badge (Optional aesthetic) */}
+                {!isChatOpen && (
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    </span>
+                )}
+            </button>
+
+        </div>
     </div>
   );
 };

@@ -2,5 +2,7 @@
   "requestFramePermissions": [
     "camera",
     "microphone"
-  ]
+  ],
+  "name": "Copy of App",
+  "description": ""
 }
