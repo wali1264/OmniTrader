@@ -6,17 +6,32 @@ import { GoogleGenAI } from "@google/genai";
 // --- Configuration & Constants ---
 const MODEL_NAME = "gemini-2.5-flash"; 
 
-// --- Key Management System (Load Balancer) ---
+// --- Key Management System (Load Balancer & Stats) ---
+interface KeyStat {
+    id: number;
+    load: number;     // "Cycles"
+    errors: number;
+    status: "active" | "offline";
+}
+
 let apiKeys: string[] = [];
+let keyStats: KeyStat[] = []; 
 let currentKeyIndex = 0;
 
 const initializeApiKeys = () => {
     const keys: string[] = [];
+    const stats: KeyStat[] = [];
+    let count = 0;
+
     const addKey = (k: any) => {
-        if (typeof k === 'string' && k.length > 10 && !keys.includes(k)) keys.push(k);
+        if (typeof k === 'string' && k.length > 10 && !keys.includes(k)) {
+            keys.push(k);
+            stats.push({ id: count, load: 0, errors: 0, status: "active" });
+            count++;
+        }
     };
 
-    // 1. Try standard single keys first (Base Key)
+    // 1. Try standard single keys first (Unit 0 - Base Key)
     try {
         // @ts-ignore
         if (typeof import.meta !== 'undefined' && import.meta.env) {
@@ -28,18 +43,17 @@ const initializeApiKeys = () => {
     try {
         if (typeof process !== 'undefined' && process.env) {
              addKey(process.env['VITE_GOOGLE_GENAI_TOKEN']);
-             // Legacy fallback
-             addKey(process.env.API_KEY);
+             // Legacy fallback if not added
+             if (keys.length === 0) addKey(process.env.API_KEY);
         }
     } catch (e) {}
 
-    // 2. Scan for Multi-Keys based on User's Preference
+    // 2. Scan for Multi-Keys (Unit 1 to 20)
     // Pattern: VITE_GOOGLE_GENAI_TOKEN_1, VITE_GOOGLE_GENAI_TOKEN_2, ...
     for (let i = 1; i <= 20; i++) {
-        // Support both user's naming and standard naming just in case
         const keyNames = [
-            `VITE_GOOGLE_GENAI_TOKEN_${i}`, // User's preference
-            `VITE_API_KEY_${i}`             // Standard fallback
+            `VITE_GOOGLE_GENAI_TOKEN_${i}`, 
+            `VITE_API_KEY_${i}`             
         ];
         
         for (const keyName of keyNames) {
@@ -55,22 +69,36 @@ const initializeApiKeys = () => {
         }
     }
 
+    keyStats = stats;
     return keys;
 };
 
 // Initialize once
 apiKeys = initializeApiKeys();
 
-const getNextApiKey = () => {
-    if (apiKeys.length === 0) return "";
+const getNextKeyInfo = () => {
+    if (apiKeys.length === 0) return null;
     
     // Round-Robin selection
     const key = apiKeys[currentKeyIndex];
+    const index = currentKeyIndex;
     
     // Rotate index for next time
     currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
     
-    return key;
+    return { key, index };
+};
+
+const updateKeyStat = (index: number, isError: boolean, isQuota: boolean = false) => {
+    if (keyStats[index]) {
+        if (isError) {
+            keyStats[index].errors++;
+            if (isQuota) keyStats[index].status = 'offline';
+        } else {
+            keyStats[index].load++;
+            if (keyStats[index].status === 'offline') keyStats[index].status = 'active'; // Recover if success
+        }
+    }
 };
 
 // --- Types ---
@@ -145,6 +173,10 @@ const App = () => {
   const [newSourceInput, setNewSourceInput] = useState("");
   const [isSourceManagerOpen, setIsSourceManagerOpen] = useState(false);
 
+  // Phase 10: Stealth Node Panel
+  const [isNodePanelOpen, setIsNodePanelOpen] = useState(false);
+  const [nodeStats, setNodeStats] = useState<KeyStat[]>([]);
+
   // Chat Feature State
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
@@ -207,6 +239,19 @@ const App = () => {
       setTrustedSources(newSources);
   };
 
+  // --- Update Node Stats ---
+  const refreshNodeStats = () => {
+      setNodeStats([...keyStats]); // Create a copy to trigger re-render
+  };
+
+  useEffect(() => {
+      if (isNodePanelOpen) {
+          refreshNodeStats();
+          const interval = setInterval(refreshNodeStats, 2000); // Live update when panel is open
+          return () => clearInterval(interval);
+      }
+  }, [isNodePanelOpen]);
+
   // --- Lot Calculation Logic ---
   const calculateLotSize = (entryStr: string, slStr: string, symbol: string): string => {
       try {
@@ -263,9 +308,9 @@ const App = () => {
   useEffect(() => {
       if (apiKeys.length > 0) {
           console.log(`System initialized with ${apiKeys.length} API Keys.`);
-          addLog("info", `سیستم با ${apiKeys.length} کلید API فعال شد.`);
+          addLog("info", `سیستم با ${apiKeys.length} واحد پردازشی فعال شد.`);
       } else {
-          addLog("error", "هیچ کلید API یافت نشد! لطفاً تنظیمات را بررسی کنید.");
+          addLog("error", "هیچ واحد پردازشی (API Key) یافت نشد! تنظیمات را بررسی کنید.");
       }
   }, []);
 
@@ -278,14 +323,14 @@ const App = () => {
 
     if (isAnalyzing) return;
 
-    const currentApiKey = getNextApiKey();
-    if (!currentApiKey) {
-        addLog("error", "کلید API یافت نشد. لطفاً تنظیمات را بررسی کنید.");
+    const keyInfo = getNextKeyInfo();
+    if (!keyInfo) {
+        addLog("error", "واحد پردازشی (API Key) یافت نشد.");
         return;
     }
 
     setIsAnalyzing(true);
-    if (!isAuto) addLog("info", "در حال اسکن بازار و تحلیل...");
+    if (!isAuto) addLog("info", `در حال اسکن بازار (Unit ${keyInfo.index})...`);
 
     try {
       const video = videoRef.current;
@@ -300,7 +345,7 @@ const App = () => {
       const base64Data = canvas.toDataURL("image/jpeg", 0.7).split(",")[1]; 
 
       // Initialize AI with Rotated Key
-      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+      const ai = new GoogleGenAI({ apiKey: keyInfo.key });
 
       const contextPrompt = lastAnalysisText 
         ? `خلاصه تحلیل قبلی: "${lastAnalysisText.substring(0, 300)}..."` 
@@ -393,6 +438,9 @@ const App = () => {
 
       const text = response.text || "تحلیلی تولید نشد.";
       
+      // Success - Update Stats
+      updateKeyStat(keyInfo.index, false);
+      
       const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       const sources: GroundingSource[] = [];
       groundingChunks.forEach((chunk: any) => {
@@ -458,10 +506,14 @@ const App = () => {
 
     } catch (err: any) {
       console.error("AI Analysis Error:", err);
+      // Determine if Quota error
+      const isQuota = err.message && (err.message.includes("429") || err.message.includes("Quota") || err.message.includes("Resource exhausted"));
+      updateKeyStat(keyInfo.index, true, isQuota);
+
       if (err.message && err.message.includes("API key")) {
-          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_GOOGLE_GENAI_TOKEN را بررسی کنید.");
-      } else if (err.message && (err.message.includes("429") || err.message.includes("Quota"))) {
-          addLog("error", "محدودیت نرخ (Rate Limit). در حال چرخش کلید برای درخواست بعدی...");
+          addLog("error", "خطای واحد پردازش: کلید معتبر نیست.");
+      } else if (isQuota) {
+          addLog("error", `محدودیت نرخ (Unit ${keyInfo.index} Offline). سوئیچ به واحد بعدی...`);
       } else {
           addLog("error", `خطا در تحلیل: ${err.message}`);
       }
@@ -474,9 +526,9 @@ const App = () => {
   const handleSendMessage = async () => {
       if (!chatInput.trim() || isChatThinking) return;
 
-      const currentApiKey = getNextApiKey();
-      if (!currentApiKey) {
-        setChatMessages(prev => [...prev, { role: 'model', text: 'خطا: کلید API یافت نشد.', timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+      const keyInfo = getNextKeyInfo();
+      if (!keyInfo) {
+        setChatMessages(prev => [...prev, { role: 'model', text: 'خطا: واحد پردازشی در دسترس نیست.', timestamp: new Date().toLocaleTimeString('fa-IR') }]);
         return;
       }
 
@@ -486,7 +538,7 @@ const App = () => {
       setIsChatThinking(true);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: currentApiKey });
+          const ai = new GoogleGenAI({ apiKey: keyInfo.key });
           
           const context = lastAnalysisText 
             ? `آخرین تحلیل: "${lastAnalysisText}". وضعیت بازار: "${marketCondition}".` 
@@ -506,10 +558,13 @@ const App = () => {
           });
 
           const responseText = response.text || "متاسفانه نتوانستم پاسخ دهم.";
+          updateKeyStat(keyInfo.index, false); // Success
           setChatMessages(prev => [...prev, { role: 'model', text: responseText, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
 
       } catch (err: any) {
-          setChatMessages(prev => [...prev, { role: 'model', text: `خطا: ${err.message}`, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+          const isQuota = err.message && (err.message.includes("429") || err.message.includes("Quota"));
+          updateKeyStat(keyInfo.index, true, isQuota);
+          setChatMessages(prev => [...prev, { role: 'model', text: `خطا در پردازش (Unit ${keyInfo.index}): ${err.message}`, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
       } finally {
           setIsChatThinking(false);
       }
@@ -673,7 +728,7 @@ const App = () => {
                     {isAnalyzing && (
                         <div className="flex items-center gap-2 bg-amber-600/20 border border-amber-500/50 px-3 py-1 rounded text-amber-300 text-xs font-bold animate-pulse">
                             <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                            در حال پردازش...
+                            در حال پردازش (Unit {currentKeyIndex})
                         </div>
                     )}
                 </div>
@@ -1022,14 +1077,55 @@ const App = () => {
             </div>
         )}
 
-        {/* Chat Features: Floating Action Button & Chat Window */}
+        {/* Stealth Node Status Panel (Phase 10) */}
+        {isNodePanelOpen && (
+            <div className="fixed inset-0 z-[60] flex items-end justify-end p-4 bg-black/40 backdrop-blur-[2px] animate-fadeIn">
+                <div className="bg-slate-950 border border-slate-800 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden font-mono text-xs">
+                    <div className="bg-slate-900 p-3 border-b border-slate-800 flex justify-between items-center">
+                        <h3 className="text-slate-400 uppercase tracking-widest text-[10px]">Node Network Status</h3>
+                        <button onClick={() => setIsNodePanelOpen(false)} className="text-slate-500 hover:text-white">✕</button>
+                    </div>
+                    
+                    <div className="p-4 max-h-80 overflow-y-auto custom-scrollbar space-y-3">
+                         <div className="grid grid-cols-2 gap-2 mb-4">
+                             <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                                 <span className="block text-[9px] text-slate-500 uppercase">Active Nodes</span>
+                                 <span className="text-lg text-emerald-500">{nodeStats.filter(n => n.status === 'active').length}</span>
+                             </div>
+                             <div className="bg-slate-900 p-2 rounded border border-slate-800">
+                                 <span className="block text-[9px] text-slate-500 uppercase">Offline Nodes</span>
+                                 <span className="text-lg text-rose-500">{nodeStats.filter(n => n.status === 'offline').length}</span>
+                             </div>
+                         </div>
+                         
+                         <div className="space-y-1">
+                             {nodeStats.map((node) => (
+                                 <div key={node.id} className="flex justify-between items-center p-2 rounded bg-slate-900/50 border border-slate-800/50 hover:bg-slate-800 transition-colors">
+                                     <div className="flex items-center gap-2">
+                                         <span className={`w-1.5 h-1.5 rounded-full ${node.status === 'active' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                                         <span className="text-slate-300">Unit {node.id}</span>
+                                     </div>
+                                     <div className="flex items-center gap-3">
+                                         <span className="text-slate-500">Cycles: <span className="text-blue-400">{node.load}</span></span>
+                                         <span className={`px-1.5 py-0.5 rounded text-[9px] ${node.status === 'active' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
+                                             {node.status === 'active' ? 'ACTIVE' : 'OFFLINE'}
+                                         </span>
+                                     </div>
+                                 </div>
+                             ))}
+                         </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Floating Icons Container */}
         <div className="fixed bottom-6 left-6 z-50 flex flex-col items-end gap-4" dir="rtl">
             
-            {/* Chat Window (Popup) */}
+            {/* Chat Window */}
             {isChatOpen && (
                 <div className="w-80 md:w-96 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-fadeIn mb-2" style={{ maxHeight: '600px', height: '500px' }}>
-                    
-                    {/* Chat Header */}
+                    {/* ... (Chat Content from previous code) ... */}
                     <div className="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center">
                         <div className="flex items-center gap-2">
                             <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -1042,7 +1138,6 @@ const App = () => {
                         </button>
                     </div>
 
-                    {/* Messages Area */}
                     <div className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-950/80 custom-scrollbar">
                         {chatMessages.map((msg, idx) => (
                             <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
@@ -1069,7 +1164,6 @@ const App = () => {
                         )}
                     </div>
 
-                    {/* Input Area */}
                     <div className="bg-slate-800 p-3 border-t border-slate-700">
                         <div className="flex gap-2">
                              <input 
@@ -1095,29 +1189,34 @@ const App = () => {
                 </div>
             )}
 
-            {/* Toggle Button (FAB) */}
-            <button 
-                onClick={() => setIsChatOpen(!isChatOpen)}
-                className="bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-lg shadow-blue-900/40 transition-transform hover:scale-105 flex items-center justify-center group relative"
-            >
-                {!isChatOpen ? (
-                     <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                     </svg>
-                ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                )}
+            <div className="flex flex-row-reverse items-end gap-3">
+                {/* Chat Toggle Button */}
+                <button 
+                    onClick={() => setIsChatOpen(!isChatOpen)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-lg shadow-blue-900/40 transition-transform hover:scale-105 flex items-center justify-center group relative"
+                >
+                    {!isChatOpen ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    )}
+                </button>
                 
-                {/* Notification Badge (Optional aesthetic) */}
-                {!isChatOpen && (
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                    </span>
-                )}
-            </button>
+                {/* Stealth Node Button */}
+                <button 
+                    onClick={() => setIsNodePanelOpen(true)}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-500 hover:text-white p-2 rounded-full border border-slate-700 shadow-lg transition-all"
+                    title="Network Status"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+                    </svg>
+                </button>
+            </div>
 
         </div>
     </div>
