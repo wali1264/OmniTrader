@@ -6,31 +6,66 @@ import { GoogleGenAI } from "@google/genai";
 // --- Configuration & Constants ---
 const MODEL_NAME = "gemini-2.5-flash"; 
 
-// Helper to safely retrieve API Key from various environment configurations (Vite, Webpack, Node)
-const getApiKey = () => {
-  // 1. Try Vite standard (import.meta.env)
-  try {
-    // @ts-ignore
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      // @ts-ignore
-      if (import.meta.env.VITE_GOOGLE_GENAI_TOKEN) return import.meta.env.VITE_GOOGLE_GENAI_TOKEN;
-      // @ts-ignore
-      if (import.meta.env.API_KEY) return import.meta.env.API_KEY;
-    }
-  } catch (e) {}
+// --- Key Management System (Load Balancer) ---
+let apiKeys: string[] = [];
+let currentKeyIndex = 0;
 
-  // 2. Try standard process.env (Webpack/Next.js/Node)
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      if (process.env['VITE_GOOGLE_GENAI_TOKEN']) return process.env['VITE_GOOGLE_GENAI_TOKEN'];
-      if (process.env.API_KEY) return process.env.API_KEY;
-    }
-  } catch (e) {}
+const initializeApiKeys = () => {
+    const keys: string[] = [];
+    const addKey = (k: any) => {
+        if (typeof k === 'string' && k.length > 10 && !keys.includes(k)) keys.push(k);
+    };
 
-  return "";
+    // 1. Try standard single keys first
+    try {
+        // @ts-ignore
+        if (typeof import.meta !== 'undefined' && import.meta.env) {
+            // @ts-ignore
+            addKey(import.meta.env.VITE_GOOGLE_GENAI_TOKEN);
+            // @ts-ignore
+            addKey(import.meta.env.API_KEY);
+        }
+    } catch (e) {}
+
+    try {
+        if (typeof process !== 'undefined' && process.env) {
+             addKey(process.env['VITE_GOOGLE_GENAI_TOKEN']);
+             addKey(process.env.API_KEY);
+        }
+    } catch (e) {}
+
+    // 2. Scan for Multi-Keys (VITE_API_KEY_1 to VITE_API_KEY_20)
+    // We loop because we can't always iterate env object keys in some bundlers
+    for (let i = 1; i <= 20; i++) {
+        const keyName = `VITE_API_KEY_${i}`;
+        try {
+            // @ts-ignore
+            if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[keyName]) {
+                // @ts-ignore
+                addKey(import.meta.env[keyName]);
+            } else if (typeof process !== 'undefined' && process.env && process.env[keyName]) {
+                addKey(process.env[keyName]);
+            }
+        } catch (e) {}
+    }
+
+    return keys;
 };
 
-const API_KEY = getApiKey();
+// Initialize once
+apiKeys = initializeApiKeys();
+
+const getNextApiKey = () => {
+    if (apiKeys.length === 0) return "";
+    
+    // Round-Robin selection
+    const key = apiKeys[currentKeyIndex];
+    
+    // Rotate index for next time
+    currentKeyIndex = (currentKeyIndex + 1) % apiKeys.length;
+    
+    return key;
+};
 
 // --- Types ---
 interface LogEntry {
@@ -50,6 +85,14 @@ interface ChatMessage {
     timestamp: string;
 }
 
+interface SignalData {
+    action: string;
+    entry: string;
+    sl: string;
+    tp: string;
+    confidence: string;
+}
+
 type RiskProfile = "conservative" | "moderate" | "aggressive";
 type TradingStyle = "scalping" | "day" | "swing";
 type NewsStrategy = "focused" | "hybrid";
@@ -62,6 +105,8 @@ const App = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisSources, setAnalysisSources] = useState<GroundingSource[]>([]);
+  const [marketCondition, setMarketCondition] = useState<string>("در انتظار..."); // Phase 7: Market Regime
+  const [signalData, setSignalData] = useState<SignalData | null>(null); // Phase 8: Sniper Signal
   
   // Phase 2 & 3 States
   const [autoMode, setAutoMode] = useState(false);
@@ -154,6 +199,16 @@ const App = () => {
     scrollToBottom();
   }, [chatMessages, isChatOpen]);
 
+  // Debug Log for Key Count
+  useEffect(() => {
+      if (apiKeys.length > 0) {
+          console.log(`System initialized with ${apiKeys.length} API Keys.`);
+          addLog("info", `سیستم با ${apiKeys.length} کلید API فعال شد.`);
+      } else {
+          addLog("error", "هیچ کلید API یافت نشد! لطفاً تنظیمات را بررسی کنید.");
+      }
+  }, []);
+
   // --- Core Logic: Capture & Analyze ---
   const analyzeScreen = useCallback(async (isAuto = false) => {
     if (!streamRef.current || !videoRef.current || !canvasRef.current) {
@@ -163,7 +218,8 @@ const App = () => {
 
     if (isAnalyzing) return;
 
-    if (!API_KEY) {
+    const currentApiKey = getNextApiKey();
+    if (!currentApiKey) {
         addLog("error", "کلید API یافت نشد. لطفاً تنظیمات را بررسی کنید.");
         return;
     }
@@ -183,12 +239,23 @@ const App = () => {
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       const base64Data = canvas.toDataURL("image/jpeg", 0.7).split(",")[1]; 
 
-      // Initialize AI
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      // Initialize AI with Rotated Key
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
 
       const contextPrompt = lastAnalysisText 
         ? `خلاصه تحلیل قبلی: "${lastAnalysisText.substring(0, 300)}..."` 
         : "بدون سابقه قبلی.";
+
+      // Phase 7: Market Regime Logic
+      const regimeInstruction = `
+        بسیار مهم: تشخیص "جنس بازار" (Market Regime):
+        قبل از هر سیگنالی، ابتدا تشخیص بده بازار در چه وضعیتی است:
+        1. **روند شفاف (Clear Trend)**: کندل‌های پرقدرت، جهت مشخص، بدون سایه‌های (Wicks) خیلی بلند. -> وضعیت "ایمن" است.
+        2. **رنج/سردرگم (Ranging)**: قیمت در یک محدوده درجا می‌زند و جهت ندارد. -> وضعیت "احتیاط" است.
+        3. **استاپ‌هانتینگ/دستکاری (Stop Hunting/Choppy)**: سایه‌های بسیار بلند، حرکات فیک (Fake-out)، رفت و برگشت‌های سریع که تریدرها را فریب می‌دهد. -> وضعیت "خطرناک" است.
+        
+        اگر بازار در حالت 3 (خطرناک) بود، اکیداً توصیه به صبر کن و سیگنال ورود نده.
+      `;
 
       // Phase 4: Strategy Injection (Translated)
       const strategyPrompt = `
@@ -201,47 +268,46 @@ const App = () => {
             tradingStyle === 'scalping' ? 'اسکالپ (نوسان‌گیری سریع)' : 
             tradingStyle === 'day' ? 'ترید روزانه' : 'سوینگ (میان‌مدت)'
         }
-        
-        دستورالعمل مدیریت ریسک:
-        - اگر 'محافظه‌کار' است: فقط زمانی سیگنال ورود بده که تحلیل تکنیکال و فاندامنتال (اخبار) هر دو تایید کنند.
-        - اگر 'تهاجمی' است: می‌توانی روی شکست‌های (Breakout) تکنیکال سیگنال بدهی حتی اگر خبر خاصی نباشد.
-        - همیشه حد ضرر (SL) و حد سود (TP) دقیق و منطقی پیشنهاد بده.
       `;
 
       // Phase 6: Source Management Injection
       const sourcesList = trustedSources.length > 0 ? trustedSources.join(', ') : "ندارد";
       const newsStrategyPrompt = enableNews ? `
-        دستورالعمل منابع اطلاعاتی (بسیار مهم):
-        لیست سفید کاربر (منابع معتبر): [${sourcesList}]
-        استراتژی جستجو: ${newsStrategy === 'focused' ? 'متمرکز' : 'ترکیبی'}
-        
-        قوانین جستجو:
-        1. اگر استراتژی 'متمرکز' است: فقط و فقط اخبار موجود در لیست سفید بالا را ملاک قرار بده. سایر منابع وب را نادیده بگیر.
-        2. اگر استراتژی 'ترکیبی' است: ابتدا لیست سفید را بررسی کن (ضریب اطمینان این‌ها ۲ برابر است). سپس اگر خبر فوری و حیاتی در سایر نقاط وب بود، آن را هم لحاظ کن.
-        3. در بخش "منابع" خروجی، حتما ذکر کن خبر از کدام منبع لیست سفید بوده است.
+        دستورالعمل منابع اطلاعاتی:
+        لیست سفید کاربر: [${sourcesList}]
+        استراتژی جستجو: ${newsStrategy === 'focused' ? 'فقط لیست سفید' : 'ترکیبی (اول لیست سفید، بعد وب)'}
       ` : "";
 
       const prompt = `
-        تو 'آمنی‌تریدر' هستی، یک دستیار فوق‌تخصص و هوشمند برای معامله‌گری در بازارهای مالی.
+        تو 'آمنی‌تریدر' هستی، یک دستیار فوق‌تخصص برای معامله‌گری.
         
         ${contextPrompt}
+        ${regimeInstruction}
         ${strategyPrompt}
         ${newsStrategyPrompt}
         
-        وظیفه:
-        1. **شناسایی بصری**: تشخیص بده چه نمادی روی نمودار است (مثلا طلا/XAUUSD، بیت‌کوین، یورو/دلار).
-        2. **تحلیل تکنیکال**: کندل‌ها، روندها، خطوط حمایت/مقاومت و الگوهای کلاسیک را بررسی کن.
-        ${enableNews ? '3. **تحلیل فاندامنتال**: طبق قوانین جستجوی بالا، اخبار مهم را استخراج کن.' : ''}
-        4. **نتیجه‌گیری**: بر اساس استراتژی کاربر، یک تصمیم قاطع بگیر.
+        وظیفه ویژه: "تک‌تیرانداز قیمت" (Sniper Mode):
+        علاوه بر تحلیل، اعداد دقیق را از محور قیمت (سمت راست تصویر) استخراج کن و محاسبه کن:
+        1. Entry: قیمت لحظه ای فعلی.
+        2. SL (Stop Loss): برای خرید زیر حمایت نزدیک/سایه کندل، برای فروش بالای مقاومت نزدیک/سایه کندل.
+        3. TP (Take Profit): حداقل 1.5 برابر ریسک (Risk/Reward > 1.5).
+
+        وظیفه عمومی:
+        1. **شناسایی نماد**: (طلا، بیت‌کوین، یورو...)
+        2. **تحلیل فاز بازار**: طبق دستورالعمل بالا، جنس بازار را مشخص کن. آیا استاپ‌هانتینگ است؟
+        3. **تحلیل تکنیکال و فاندامنتال**: ترکیب کندل‌ها و اخبار.
         
-        فرمت خروجی (دقیقاً به همین صورت و به زبان فارسی بنویس):
+        فرمت خروجی (دقیقاً به همین صورت):
         [نماد: نام نماد]
+        [وضعیت بازار: روند شفاف / رنج / استاپ‌هانتینگ (خطرناک)]
         [سیگنال: خرید / فروش / صبر]
         [اطمینان: 0-100%]
-        [حد ضرر: عدد] | [حد سود: عدد]
+        [ورود: عدد دقیق یا محدوده]
+        [حد ضرر: عدد دقیق]
+        [حد سود: عدد دقیق]
         
         **تحلیل جامع:**
-        (توضیحات تخصصی اما روان به زبان فارسی. چرا این تصمیم را گرفتی؟ ریسک معامله کجاست؟ به اخبار اشاره کن.)
+        (توضیحات روان و استدلالی. اگر بازار خطرناک است، صریحا بگو "مراقب شکار استاپ باشید".)
       `;
 
       // Tools config
@@ -279,16 +345,47 @@ const App = () => {
       // Check for signals (Persian Keywords)
       const hasBuy = text.includes("سیگنال: خرید");
       const hasSell = text.includes("سیگنال: فروش");
+      
+      // Parse Market Regime
+      const regimeMatch = text.match(/\[وضعیت بازار:\s*(.*?)\]/);
+      const currentRegime = regimeMatch ? regimeMatch[1].trim() : "نامشخص";
+      setMarketCondition(currentRegime);
+      
+      // Parse Sniper Data (Phase 8)
+      const entryMatch = text.match(/\[ورود:\s*(.*?)\]/);
+      const slMatch = text.match(/\[حد ضرر:\s*(.*?)\]/);
+      const tpMatch = text.match(/\[حد سود:\s*(.*?)\]/);
+      const confidenceMatch = text.match(/\[اطمینان:\s*(.*?)\]/);
+
+      if ((hasBuy || hasSell) && entryMatch && slMatch && tpMatch) {
+          setSignalData({
+              action: hasBuy ? "BUY" : "SELL",
+              entry: entryMatch[1],
+              sl: slMatch[1],
+              tp: tpMatch[1],
+              confidence: confidenceMatch ? confidenceMatch[1] : "---"
+          });
+      } else {
+          setSignalData(null);
+      }
+      
+      const isDangerous = currentRegime.includes("خطرناک") || currentRegime.includes("استاپ‌هانتینگ");
 
       if (hasBuy || hasSell) {
          addLog("alert", `سیگنال معاملاتی شناسایی شد: ${hasBuy ? 'خرید' : 'فروش'}`);
          
-         // Voice Alert Logic (Phase 5)
+         // Voice Alert Logic (Phase 5 + 7)
          if (voiceEnabled && text !== lastSpokenText) {
              const assetMatch = text.match(/\[نماد:\s*(.*?)\]/);
              const assetName = assetMatch ? assetMatch[1] : "بازار";
              const action = hasBuy ? "خرید" : "فروش";
-             speak(`توجه کنید. سیگنال ${action} برای ${assetName} صادر شد. لطفاً تحلیل را بررسی کنید.`);
+             
+             let speechText = `توجه کنید. سیگنال ${action} برای ${assetName} صادر شد.`;
+             if (isDangerous) {
+                 speechText = `هشدار! وضعیت بازار خطرناک است و احتمال استاپ هانتینگ وجود دارد. سیگنال ${action} پرریسک است.`;
+             }
+             
+             speak(speechText);
              setLastSpokenText(text); 
          }
 
@@ -298,9 +395,10 @@ const App = () => {
 
     } catch (err: any) {
       console.error("AI Analysis Error:", err);
-      // Handle missing API key error gracefully in logs
       if (err.message && err.message.includes("API key")) {
-          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_GOOGLE_GENAI_TOKEN را بررسی کنید.");
+          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_API_KEY_... را بررسی کنید.");
+      } else if (err.message && (err.message.includes("429") || err.message.includes("Quota"))) {
+          addLog("error", "محدودیت نرخ (Rate Limit). در حال چرخش کلید برای درخواست بعدی...");
       } else {
           addLog("error", `خطا در تحلیل: ${err.message}`);
       }
@@ -313,8 +411,9 @@ const App = () => {
   const handleSendMessage = async () => {
       if (!chatInput.trim() || isChatThinking) return;
 
-      if (!API_KEY) {
-        setChatMessages(prev => [...prev, { role: 'model', text: 'خطا: کلید API یافت نشد. لطفاً تنظیمات ورسل را بررسی کنید.', timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+      const currentApiKey = getNextApiKey();
+      if (!currentApiKey) {
+        setChatMessages(prev => [...prev, { role: 'model', text: 'خطا: کلید API یافت نشد.', timestamp: new Date().toLocaleTimeString('fa-IR') }]);
         return;
       }
 
@@ -324,38 +423,30 @@ const App = () => {
       setIsChatThinking(true);
 
       try {
-          const ai = new GoogleGenAI({ apiKey: API_KEY });
+          const ai = new GoogleGenAI({ apiKey: currentApiKey });
           
-          // Context for the chat (Aware of the visual analysis)
           const context = lastAnalysisText 
-            ? `آخرین تحلیل تصویری که سیستم انجام داده این است: "${lastAnalysisText}". اگر کاربر سوالی راجع به نمودار فعلی پرسید از این اطلاعات استفاده کن.` 
+            ? `آخرین تحلیل: "${lastAnalysisText}". وضعیت بازار: "${marketCondition}".` 
             : "هنوز تحلیل تصویری انجام نشده است.";
 
           const systemInstruction = `
-            شما یک دستیار تریدر ارشد با ۲۰ سال سابقه هستید. نام شما 'آمنی‌تریدر' است.
+            شما 'آمنی‌تریدر' هستید.
             ${context}
-            کاربر ممکن است از شما بخواهد اخبار را چک کنید یا نظر تخصصی بدهید.
-            پاسخ‌ها باید کوتاه، تخصصی و به زبان فارسی باشد.
-            اگر کاربر درخواست بررسی فوری اخبار یا وب را داشت، حتما از ابزار جستجو استفاده کن.
-            
-            منابع مورد اعتماد کاربر: ${trustedSources.join(', ')}
-            استراتژی خبری: ${newsStrategy === 'focused' ? 'فقط منابع بالا' : 'ترکیبی'}
+            اگر کاربر درباره "استاپ هانتینگ" یا وضعیت بازار پرسید، با توجه به تحلیل بالا پاسخ بده.
+            پاسخ‌ها کوتاه و فارسی باشد.
           `;
 
           const response = await ai.models.generateContent({
               model: MODEL_NAME,
               contents: [{ role: 'user', parts: [{ text: systemInstruction + "\n\n" + userMsg }] }],
-              config: {
-                  tools: [{ googleSearch: {} }] // Enable search for chat too
-              }
+              config: { tools: [{ googleSearch: {} }] }
           });
 
           const responseText = response.text || "متاسفانه نتوانستم پاسخ دهم.";
-          
           setChatMessages(prev => [...prev, { role: 'model', text: responseText, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
 
       } catch (err: any) {
-          setChatMessages(prev => [...prev, { role: 'model', text: `خطا در ارتباط: ${err.message}`, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+          setChatMessages(prev => [...prev, { role: 'model', text: `خطا: ${err.message}`, timestamp: new Date().toLocaleTimeString('fa-IR') }]);
       } finally {
           setIsChatThinking(false);
       }
@@ -365,11 +456,8 @@ const App = () => {
   // --- Effects ---
   useEffect(() => {
     if (autoMode && isCapturing) {
-        // Translate log for auto mode
         const profileFa = riskProfile === 'conservative' ? 'محافظه‌کار' : riskProfile === 'aggressive' ? 'تهاجمی' : 'متعادل';
-        const styleFa = tradingStyle === 'scalping' ? 'اسکالپ' : tradingStyle === 'day' ? 'روزانه' : 'سوینگ';
-        
-        addLog("info", `خلبان خودکار: پایش هر ${scanInterval/1000} ثانیه [${profileFa}/${styleFa}]`);
+        addLog("info", `خلبان خودکار: پایش هر ${scanInterval/1000} ثانیه [${profileFa}]`);
       
         analyzeScreen(true);
         timerRef.current = setInterval(() => {
@@ -418,6 +506,14 @@ const App = () => {
     setIsCapturing(false);
     setAutoMode(false);
     addLog("info", "اتصال تصویری قطع شد.");
+  };
+
+  // --- Helper for Market Badge Color ---
+  const getRegimeColor = (regime: string) => {
+      if (regime.includes("خطرناک") || regime.includes("استاپ")) return "bg-rose-500/20 text-rose-400 border-rose-500/50";
+      if (regime.includes("رنج")) return "bg-amber-500/20 text-amber-400 border-amber-500/50";
+      if (regime.includes("روند") || regime.includes("شفاف")) return "bg-emerald-500/20 text-emerald-400 border-emerald-500/50";
+      return "bg-slate-700/50 text-slate-400 border-slate-600";
   };
 
   // --- UI Render ---
@@ -626,12 +722,20 @@ const App = () => {
           {/* Analysis Card */}
           <div className="bg-slate-900 rounded-xl border border-slate-700 p-0 flex flex-col flex-grow shadow-lg overflow-hidden relative group">
             <div className="bg-slate-800/50 p-3 border-b border-slate-700 flex justify-between items-center">
-                <h2 className="text-sm font-bold text-amber-400 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                    </svg>
-                    هوش مرکزی
-                </h2>
+                <div className="flex items-center gap-3">
+                    <h2 className="text-sm font-bold text-amber-400 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                        </svg>
+                        هوش مرکزی
+                    </h2>
+                    
+                    {/* Market Regime Badge */}
+                    <span className={`text-[10px] px-2 py-0.5 rounded border ${getRegimeColor(marketCondition)}`}>
+                        {marketCondition}
+                    </span>
+                </div>
+
                 <div className="flex items-center gap-2">
                     {analysisResult && (
                         <button 
@@ -648,11 +752,45 @@ const App = () => {
                 </div>
             </div>
             
-            <div className="flex-grow p-4 overflow-y-auto bg-slate-950/50 relative">
+            <div className="flex-grow p-4 overflow-y-auto bg-slate-950/50 relative custom-scrollbar">
+              
+              {/* Sniper Card (Phase 8) */}
+              {signalData && (
+                  <div className={`mb-4 rounded-lg p-3 border ${signalData.action === 'BUY' ? 'bg-emerald-900/30 border-emerald-500/50' : 'bg-rose-900/30 border-rose-500/50'} animate-fadeIn`}>
+                      <div className="flex justify-between items-center mb-2">
+                          <span className={`text-lg font-black tracking-widest ${signalData.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {signalData.action === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}
+                          </span>
+                          <span className="text-[10px] bg-black/40 px-2 py-1 rounded text-slate-300">اطمینان: {signalData.confidence}</span>
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-black/40 rounded p-1">
+                              <span className="block text-[9px] text-slate-500">نقطه ورود</span>
+                              <span className="text-xs font-mono font-bold text-slate-200" dir="ltr">{signalData.entry}</span>
+                          </div>
+                          <div className="bg-black/40 rounded p-1 border border-red-500/30">
+                              <span className="block text-[9px] text-red-400">حد ضرر (SL)</span>
+                              <span className="text-xs font-mono font-bold text-red-200" dir="ltr">{signalData.sl}</span>
+                          </div>
+                          <div className="bg-black/40 rounded p-1 border border-green-500/30">
+                              <span className="block text-[9px] text-green-400">حد سود (TP)</span>
+                              <span className="text-xs font-mono font-bold text-green-200" dir="ltr">{signalData.tp}</span>
+                          </div>
+                      </div>
+                  </div>
+              )}
+
               {analysisResult ? (
                 <div className="space-y-4 animate-fadeIn">
                     <div className="text-sm leading-relaxed text-slate-300 whitespace-pre-wrap text-justify">
-                        {analysisResult}
+                        {/* Clean up the display text to remove the raw tags we parsed */}
+                        {analysisResult
+                            .replace(/\[ورود:.*?\]/g, '')
+                            .replace(/\[حد ضرر:.*?\]/g, '')
+                            .replace(/\[حد سود:.*?\]/g, '')
+                            .replace(/\[اطمینان:.*?\]/g, '')
+                        }
                     </div>
                     
                     {/* Phase 3: Sources Section */}
