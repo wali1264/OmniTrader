@@ -35,7 +35,6 @@ const initializeApiKeys = () => {
     } catch (e) {}
 
     // 2. Scan for Multi-Keys (VITE_API_KEY_1 to VITE_API_KEY_20)
-    // We loop because we can't always iterate env object keys in some bundlers
     for (let i = 1; i <= 20; i++) {
         const keyName = `VITE_API_KEY_${i}`;
         try {
@@ -86,11 +85,13 @@ interface ChatMessage {
 }
 
 interface SignalData {
+    symbol: string;
     action: string;
     entry: string;
     sl: string;
     tp: string;
     confidence: string;
+    score: number; // 0-100
 }
 
 type RiskProfile = "conservative" | "moderate" | "aggressive";
@@ -105,8 +106,8 @@ const App = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
   const [analysisSources, setAnalysisSources] = useState<GroundingSource[]>([]);
-  const [marketCondition, setMarketCondition] = useState<string>("در انتظار..."); // Phase 7: Market Regime
-  const [signalData, setSignalData] = useState<SignalData | null>(null); // Phase 8: Sniper Signal
+  const [marketCondition, setMarketCondition] = useState<string>("در انتظار..."); 
+  const [signalData, setSignalData] = useState<SignalData | null>(null); 
   
   // Phase 2 & 3 States
   const [autoMode, setAutoMode] = useState(false);
@@ -117,6 +118,10 @@ const App = () => {
   // Phase 4 States: Strategy & Risk
   const [riskProfile, setRiskProfile] = useState<RiskProfile>("moderate");
   const [tradingStyle, setTradingStyle] = useState<TradingStyle>("day");
+
+  // Phase 9: Money Management States
+  const [accountBalance, setAccountBalance] = useState<number>(1000);
+  const [riskPercentage, setRiskPercentage] = useState<number>(1);
 
   // Phase 5 States: Voice & Polish
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -195,11 +200,59 @@ const App = () => {
       setTrustedSources(newSources);
   };
 
+  // --- Lot Calculation Logic ---
+  const calculateLotSize = (entryStr: string, slStr: string, symbol: string): string => {
+      try {
+          const entry = parseFloat(entryStr.replace(/,/g, ''));
+          const sl = parseFloat(slStr.replace(/,/g, ''));
+          
+          if (isNaN(entry) || isNaN(sl) || entry === sl) return "نامشخص";
+
+          const riskAmount = accountBalance * (riskPercentage / 100);
+          const distance = Math.abs(entry - sl);
+          
+          if (distance === 0) return "نامشخص";
+
+          let lotSize = 0;
+
+          // Simple Heuristic for Asset Class based on Symbol or Price
+          const isGold = symbol.toUpperCase().includes("GOLD") || symbol.toUpperCase().includes("XAU") || (entry > 1500 && entry < 3000);
+          const isForex = symbol.toUpperCase().includes("USD") || (entry < 200 && entry > 0.5);
+          const isCrypto = symbol.toUpperCase().includes("BTC") || symbol.toUpperCase().includes("ETH") || entry > 10000;
+
+          if (isGold) {
+              // Gold: 1 Lot = 100oz. 1 pip (0.1) movement = $10. 
+              // Distance of $1.0 = $100 per 1 Lot.
+              // Formula: Risk / (Distance * 100)
+              lotSize = riskAmount / (distance * 100);
+          } else if (isForex) {
+              // Forex Standard: 1 Lot = 100,000 units.
+              // Approx: Distance (in price) * 100,000 = Value per lot
+              lotSize = riskAmount / (distance * 100000);
+          } else if (isCrypto) {
+               // Crypto: Direct units. 
+               // Risk / Distance = Amount of coins
+               lotSize = riskAmount / distance;
+               return `${lotSize.toFixed(4)} واحد`; // Return as units for crypto
+          } else {
+              // Fallback (Generic units)
+              lotSize = riskAmount / distance;
+              return `${lotSize.toFixed(2)} واحد`;
+          }
+
+          // Format Forex/Gold lots
+          if (lotSize < 0.01) lotSize = 0.01;
+          return `${lotSize.toFixed(2)} لات`;
+
+      } catch (e) {
+          return "خطا در محاسبه";
+      }
+  };
+
   useEffect(() => {
     scrollToBottom();
   }, [chatMessages, isChatOpen]);
 
-  // Debug Log for Key Count
   useEffect(() => {
       if (apiKeys.length > 0) {
           console.log(`System initialized with ${apiKeys.length} API Keys.`);
@@ -246,7 +299,6 @@ const App = () => {
         ? `خلاصه تحلیل قبلی: "${lastAnalysisText.substring(0, 300)}..."` 
         : "بدون سابقه قبلی.";
 
-      // Phase 7: Market Regime Logic
       const regimeInstruction = `
         بسیار مهم: تشخیص "جنس بازار" (Market Regime):
         قبل از هر سیگنالی، ابتدا تشخیص بده بازار در چه وضعیتی است:
@@ -257,7 +309,6 @@ const App = () => {
         اگر بازار در حالت 3 (خطرناک) بود، اکیداً توصیه به صبر کن و سیگنال ورود نده.
       `;
 
-      // Phase 4: Strategy Injection (Translated)
       const strategyPrompt = `
         تنظیمات استراتژی کاربر:
         - پروفایل ریسک: ${
@@ -270,7 +321,6 @@ const App = () => {
         }
       `;
 
-      // Phase 6: Source Management Injection
       const sourcesList = trustedSources.length > 0 ? trustedSources.join(', ') : "ندارد";
       const newsStrategyPrompt = enableNews ? `
         دستورالعمل منابع اطلاعاتی:
@@ -292,25 +342,33 @@ const App = () => {
         2. SL (Stop Loss): برای خرید زیر حمایت نزدیک/سایه کندل، برای فروش بالای مقاومت نزدیک/سایه کندل.
         3. TP (Take Profit): حداقل 1.5 برابر ریسک (Risk/Reward > 1.5).
 
+        وظیفه جدید: "نمره‌دهی سیگنال" (Signal Scoring):
+        بر اساس 5 فاکتور زیر به سیگنال نمره بده (مجموع 100):
+        1. روند (Trend): 20 امتیاز
+        2. الگوی کندلی (Candle): 20 امتیاز
+        3. ناحیه حمایت/مقاومت (S/R): 20 امتیاز
+        4. مومنتوم/حجم (Momentum): 20 امتیاز
+        5. تاییدیه اخبار (News): 20 امتیاز
+        
         وظیفه عمومی:
-        1. **شناسایی نماد**: (طلا، بیت‌کوین، یورو...)
-        2. **تحلیل فاز بازار**: طبق دستورالعمل بالا، جنس بازار را مشخص کن. آیا استاپ‌هانتینگ است؟
+        1. **شناسایی نماد**: (مثلا XAUUSD, EURUSD, BTC...)
+        2. **تحلیل فاز بازار**: طبق دستورالعمل بالا.
         3. **تحلیل تکنیکال و فاندامنتال**: ترکیب کندل‌ها و اخبار.
         
         فرمت خروجی (دقیقاً به همین صورت):
-        [نماد: نام نماد]
+        [نماد: نام نماد لاتین]
         [وضعیت بازار: روند شفاف / رنج / استاپ‌هانتینگ (خطرناک)]
         [سیگنال: خرید / فروش / صبر]
         [اطمینان: 0-100%]
-        [ورود: عدد دقیق یا محدوده]
+        [نمره اعتبار: عدد 0 تا 100]
+        [ورود: عدد دقیق]
         [حد ضرر: عدد دقیق]
         [حد سود: عدد دقیق]
         
         **تحلیل جامع:**
-        (توضیحات روان و استدلالی. اگر بازار خطرناک است، صریحا بگو "مراقب شکار استاپ باشید".)
+        (توضیحات روان و استدلالی.)
       `;
 
-      // Tools config
       const tools = enableNews ? [{ googleSearch: {} }] : [];
 
       const response = await ai.models.generateContent({
@@ -326,10 +384,8 @@ const App = () => {
         }
       });
 
-      // Extract Text
       const text = response.text || "تحلیلی تولید نشد.";
       
-      // Extract Grounding Sources
       const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
       const sources: GroundingSource[] = [];
       groundingChunks.forEach((chunk: any) => {
@@ -342,28 +398,30 @@ const App = () => {
       setAnalysisResult(text);
       setAnalysisSources(sources);
       
-      // Check for signals (Persian Keywords)
       const hasBuy = text.includes("سیگنال: خرید");
       const hasSell = text.includes("سیگنال: فروش");
       
-      // Parse Market Regime
       const regimeMatch = text.match(/\[وضعیت بازار:\s*(.*?)\]/);
       const currentRegime = regimeMatch ? regimeMatch[1].trim() : "نامشخص";
       setMarketCondition(currentRegime);
       
-      // Parse Sniper Data (Phase 8)
+      // Parse Sniper Data
+      const symbolMatch = text.match(/\[نماد:\s*(.*?)\]/);
       const entryMatch = text.match(/\[ورود:\s*(.*?)\]/);
       const slMatch = text.match(/\[حد ضرر:\s*(.*?)\]/);
       const tpMatch = text.match(/\[حد سود:\s*(.*?)\]/);
       const confidenceMatch = text.match(/\[اطمینان:\s*(.*?)\]/);
+      const scoreMatch = text.match(/\[نمره اعتبار:\s*(\d+)\]/);
 
       if ((hasBuy || hasSell) && entryMatch && slMatch && tpMatch) {
           setSignalData({
+              symbol: symbolMatch ? symbolMatch[1] : "Unknown",
               action: hasBuy ? "BUY" : "SELL",
               entry: entryMatch[1],
               sl: slMatch[1],
               tp: tpMatch[1],
-              confidence: confidenceMatch ? confidenceMatch[1] : "---"
+              confidence: confidenceMatch ? confidenceMatch[1] : "---",
+              score: scoreMatch ? parseInt(scoreMatch[1]) : 0
           });
       } else {
           setSignalData(null);
@@ -374,10 +432,8 @@ const App = () => {
       if (hasBuy || hasSell) {
          addLog("alert", `سیگنال معاملاتی شناسایی شد: ${hasBuy ? 'خرید' : 'فروش'}`);
          
-         // Voice Alert Logic (Phase 5 + 7)
          if (voiceEnabled && text !== lastSpokenText) {
-             const assetMatch = text.match(/\[نماد:\s*(.*?)\]/);
-             const assetName = assetMatch ? assetMatch[1] : "بازار";
+             const assetName = symbolMatch ? symbolMatch[1] : "بازار";
              const action = hasBuy ? "خرید" : "فروش";
              
              let speechText = `توجه کنید. سیگنال ${action} برای ${assetName} صادر شد.`;
@@ -405,7 +461,7 @@ const App = () => {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, lastAnalysisText, enableNews, riskProfile, tradingStyle, voiceEnabled, lastSpokenText, speak, newsStrategy, trustedSources]);
+  }, [isAnalyzing, lastAnalysisText, enableNews, riskProfile, tradingStyle, voiceEnabled, lastSpokenText, speak, newsStrategy, trustedSources, accountBalance, riskPercentage]);
 
   // --- Chat Logic ---
   const handleSendMessage = async () => {
@@ -515,6 +571,12 @@ const App = () => {
       if (regime.includes("روند") || regime.includes("شفاف")) return "bg-emerald-500/20 text-emerald-400 border-emerald-500/50";
       return "bg-slate-700/50 text-slate-400 border-slate-600";
   };
+  
+  const getScoreColor = (score: number) => {
+      if (score >= 80) return "bg-emerald-500";
+      if (score >= 50) return "bg-amber-500";
+      return "bg-rose-500";
+  };
 
   // --- UI Render ---
   return (
@@ -590,18 +652,14 @@ const App = () => {
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-4 flex justify-between items-end z-30">
                     <div className="flex gap-4">
                         <div className="text-xs text-slate-400">
-                             ریسک: <span className="text-purple-400 font-bold">{
-                                riskProfile === 'conservative' ? 'محافظه‌کار' : riskProfile === 'moderate' ? 'متعادل' : 'تهاجمی'
-                             }</span>
+                             سرمایه: <span className="text-emerald-400 font-bold">${accountBalance}</span>
                         </div>
                         <div className="text-xs text-slate-400">
-                             سبک: <span className="text-blue-400 font-bold">{
-                                tradingStyle === 'scalping' ? 'اسکالپ' : tradingStyle === 'day' ? 'روزانه' : 'سوینگ'
-                             }</span>
+                             ریسک: <span className="text-rose-400 font-bold">{riskPercentage}%</span>
                         </div>
                         <div className="text-xs text-slate-400">
                              جستجو: <span className="text-amber-400 font-bold">{
-                                newsStrategy === 'focused' ? 'متمرکز (لیست سفید)' : 'ترکیبی (هوشمند)'
+                                newsStrategy === 'focused' ? 'متمرکز (لیست)' : 'ترکیبی (وب)'
                              }</span>
                         </div>
                     </div>
@@ -639,7 +697,8 @@ const App = () => {
              </div>
 
              {/* Auto-Pilot & Settings */}
-             <div className="bg-slate-900 rounded-lg p-3 border border-slate-800 flex flex-col gap-2">
+             <div className="bg-slate-900 rounded-lg p-3 border border-slate-800 flex flex-col gap-2 relative group">
+                 
                  {/* Top Row: Toggles */}
                  <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -660,20 +719,6 @@ const App = () => {
                         >
                             تنظیم منابع
                         </button>
-
-                        <div className="flex items-center gap-2" title="فعال سازی هشدار صوتی">
-                            <input 
-                                type="checkbox" 
-                                id="voiceToggle"
-                                checked={voiceEnabled}
-                                onChange={(e) => setVoiceEnabled(e.target.checked)}
-                                className="w-4 h-4 accent-purple-500 cursor-pointer"
-                            />
-                            <label htmlFor="voiceToggle" className="text-xs text-slate-300 cursor-pointer select-none flex items-center gap-1">
-                                صوت
-                                {voiceEnabled && <span className="text-[8px] text-green-400">●</span>}
-                            </label>
-                        </div>
                     </div>
                     
                      <button
@@ -690,27 +735,27 @@ const App = () => {
                     </button>
                  </div>
 
-                 {/* Bottom Row: Strategy Dropdowns */}
-                 <div className="grid grid-cols-2 gap-2">
-                     <select 
-                        value={riskProfile}
-                        onChange={(e) => setRiskProfile(e.target.value as RiskProfile)}
-                        className="bg-slate-800 text-xs text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none focus:border-purple-500 cursor-pointer hover:bg-slate-750"
-                     >
-                         <option value="conservative">محافظه‌کار (کم‌ریسک)</option>
-                         <option value="moderate">متعادل (میانه)</option>
-                         <option value="aggressive">تهاجمی (پرریسک)</option>
-                     </select>
-                     
-                     <select 
-                        value={tradingStyle}
-                        onChange={(e) => setTradingStyle(e.target.value as TradingStyle)}
-                        className="bg-slate-800 text-xs text-slate-300 border border-slate-700 rounded px-2 py-1 outline-none focus:border-blue-500 cursor-pointer hover:bg-slate-750"
-                     >
-                         <option value="scalping">اسکالپ (نوسان‌گیری)</option>
-                         <option value="day">ترید روزانه</option>
-                         <option value="swing">سوینگ (میان‌مدت)</option>
-                     </select>
+                 {/* Money Management Inputs */}
+                 <div className="grid grid-cols-2 gap-2 mt-1 border-t border-slate-800 pt-2">
+                     <div className="flex flex-col gap-1">
+                         <label className="text-[10px] text-slate-500">سرمایه ($)</label>
+                         <input 
+                            type="number" 
+                            value={accountBalance}
+                            onChange={(e) => setAccountBalance(Number(e.target.value))}
+                            className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-emerald-500"
+                         />
+                     </div>
+                     <div className="flex flex-col gap-1">
+                         <label className="text-[10px] text-slate-500">ریسک (%)</label>
+                         <input 
+                            type="number" 
+                            step="0.1"
+                            value={riskPercentage}
+                            onChange={(e) => setRiskPercentage(Number(e.target.value))}
+                            className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs text-white outline-none focus:border-rose-500"
+                         />
+                     </div>
                  </div>
              </div>
           </div>
@@ -754,17 +799,34 @@ const App = () => {
             
             <div className="flex-grow p-4 overflow-y-auto bg-slate-950/50 relative custom-scrollbar">
               
-              {/* Sniper Card (Phase 8) */}
+              {/* Sniper Card (Phase 8 + 9) */}
               {signalData && (
-                  <div className={`mb-4 rounded-lg p-3 border ${signalData.action === 'BUY' ? 'bg-emerald-900/30 border-emerald-500/50' : 'bg-rose-900/30 border-rose-500/50'} animate-fadeIn`}>
-                      <div className="flex justify-between items-center mb-2">
-                          <span className={`text-lg font-black tracking-widest ${signalData.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {signalData.action === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}
-                          </span>
-                          <span className="text-[10px] bg-black/40 px-2 py-1 rounded text-slate-300">اطمینان: {signalData.confidence}</span>
+                  <div className={`mb-4 rounded-lg p-3 border relative overflow-hidden ${signalData.action === 'BUY' ? 'bg-emerald-900/30 border-emerald-500/50' : 'bg-rose-900/30 border-rose-500/50'} animate-fadeIn`}>
+                      
+                      {/* Signal Score Bar (Phase 9) */}
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-black/50">
+                          <div 
+                            className={`h-full ${getScoreColor(signalData.score)}`} 
+                            style={{ width: `${signalData.score}%` }}
+                          ></div>
+                      </div>
+
+                      <div className="flex justify-between items-start mb-2 mt-2">
+                          <div className="flex flex-col">
+                              <span className={`text-lg font-black tracking-widest ${signalData.action === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {signalData.action === 'BUY' ? 'خرید (BUY)' : 'فروش (SELL)'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">{signalData.symbol}</span>
+                          </div>
+                          
+                          <div className="flex flex-col items-end gap-1">
+                              <span className={`text-[10px] px-2 py-0.5 rounded text-white font-bold ${getScoreColor(signalData.score)}`}>
+                                  امتیاز: {signalData.score}/100
+                              </span>
+                          </div>
                       </div>
                       
-                      <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="grid grid-cols-3 gap-2 text-center mb-2">
                           <div className="bg-black/40 rounded p-1">
                               <span className="block text-[9px] text-slate-500">نقطه ورود</span>
                               <span className="text-xs font-mono font-bold text-slate-200" dir="ltr">{signalData.entry}</span>
@@ -778,6 +840,20 @@ const App = () => {
                               <span className="text-xs font-mono font-bold text-green-200" dir="ltr">{signalData.tp}</span>
                           </div>
                       </div>
+
+                      {/* Money Management Result */}
+                      <div className="bg-black/50 rounded p-2 flex justify-between items-center border border-slate-700">
+                          <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400">ریسک دلاری</span>
+                              <span className="text-xs font-bold text-rose-300">${(accountBalance * (riskPercentage/100)).toFixed(2)}</span>
+                          </div>
+                          <div className="flex flex-col items-end">
+                              <span className="text-[9px] text-slate-400">حجم پیشنهادی</span>
+                              <span className="text-sm font-bold text-amber-400 dir-ltr">
+                                  {calculateLotSize(signalData.entry, signalData.sl, signalData.symbol)}
+                              </span>
+                          </div>
+                      </div>
                   </div>
               )}
 
@@ -786,10 +862,12 @@ const App = () => {
                     <div className="text-sm leading-relaxed text-slate-300 whitespace-pre-wrap text-justify">
                         {/* Clean up the display text to remove the raw tags we parsed */}
                         {analysisResult
+                            .replace(/\[نماد:.*?\]/g, '')
                             .replace(/\[ورود:.*?\]/g, '')
                             .replace(/\[حد ضرر:.*?\]/g, '')
                             .replace(/\[حد سود:.*?\]/g, '')
                             .replace(/\[اطمینان:.*?\]/g, '')
+                            .replace(/\[نمره اعتبار:.*?\]/g, '')
                         }
                     </div>
                     
