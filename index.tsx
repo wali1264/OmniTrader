@@ -5,8 +5,32 @@ import { GoogleGenAI } from "@google/genai";
 
 // --- Configuration & Constants ---
 const MODEL_NAME = "gemini-2.5-flash"; 
-// Updated to prioritize the user's specific environment variable name
-const API_KEY = process.env['VITE_GOOGLE_GENAI_TOKEN'] || process.env.API_KEY || "";
+
+// Helper to safely retrieve API Key from various environment configurations (Vite, Webpack, Node)
+const getApiKey = () => {
+  // 1. Try Vite standard (import.meta.env)
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      // @ts-ignore
+      if (import.meta.env.VITE_GOOGLE_GENAI_TOKEN) return import.meta.env.VITE_GOOGLE_GENAI_TOKEN;
+      // @ts-ignore
+      if (import.meta.env.API_KEY) return import.meta.env.API_KEY;
+    }
+  } catch (e) {}
+
+  // 2. Try standard process.env (Webpack/Next.js/Node)
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      if (process.env['VITE_GOOGLE_GENAI_TOKEN']) return process.env['VITE_GOOGLE_GENAI_TOKEN'];
+      if (process.env.API_KEY) return process.env.API_KEY;
+    }
+  } catch (e) {}
+
+  return "";
+};
+
+const API_KEY = getApiKey();
 
 // --- Types ---
 interface LogEntry {
@@ -109,6 +133,11 @@ const App = () => {
     }
 
     if (isAnalyzing) return;
+
+    if (!API_KEY) {
+        addLog("error", "کلید API یافت نشد. لطفاً تنظیمات را بررسی کنید.");
+        return;
+    }
 
     setIsAnalyzing(true);
     if (!isAuto) addLog("info", "در حال اسکن بازار و تحلیل...");
@@ -226,7 +255,12 @@ const App = () => {
 
     } catch (err: any) {
       console.error("AI Analysis Error:", err);
-      addLog("error", `خطا در تحلیل: ${err.message}`);
+      // Handle missing API key error gracefully in logs
+      if (err.message && err.message.includes("API key")) {
+          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_GOOGLE_GENAI_TOKEN را بررسی کنید.");
+      } else {
+          addLog("error", `خطا در تحلیل: ${err.message}`);
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -235,6 +269,11 @@ const App = () => {
   // --- Chat Logic ---
   const handleSendMessage = async () => {
       if (!chatInput.trim() || isChatThinking) return;
+
+      if (!API_KEY) {
+        setChatMessages(prev => [...prev, { role: 'model', text: 'خطا: کلید API یافت نشد. لطفاً تنظیمات ورسل را بررسی کنید.', timestamp: new Date().toLocaleTimeString('fa-IR') }]);
+        return;
+      }
 
       const userMsg = chatInput;
       setChatInput("");
