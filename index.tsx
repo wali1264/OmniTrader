@@ -16,36 +16,43 @@ const initializeApiKeys = () => {
         if (typeof k === 'string' && k.length > 10 && !keys.includes(k)) keys.push(k);
     };
 
-    // 1. Try standard single keys first
+    // 1. Try standard single keys first (Base Key)
     try {
         // @ts-ignore
         if (typeof import.meta !== 'undefined' && import.meta.env) {
             // @ts-ignore
             addKey(import.meta.env.VITE_GOOGLE_GENAI_TOKEN);
-            // @ts-ignore
-            addKey(import.meta.env.API_KEY);
         }
     } catch (e) {}
 
     try {
         if (typeof process !== 'undefined' && process.env) {
              addKey(process.env['VITE_GOOGLE_GENAI_TOKEN']);
+             // Legacy fallback
              addKey(process.env.API_KEY);
         }
     } catch (e) {}
 
-    // 2. Scan for Multi-Keys (VITE_API_KEY_1 to VITE_API_KEY_20)
+    // 2. Scan for Multi-Keys based on User's Preference
+    // Pattern: VITE_GOOGLE_GENAI_TOKEN_1, VITE_GOOGLE_GENAI_TOKEN_2, ...
     for (let i = 1; i <= 20; i++) {
-        const keyName = `VITE_API_KEY_${i}`;
-        try {
-            // @ts-ignore
-            if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[keyName]) {
+        // Support both user's naming and standard naming just in case
+        const keyNames = [
+            `VITE_GOOGLE_GENAI_TOKEN_${i}`, // User's preference
+            `VITE_API_KEY_${i}`             // Standard fallback
+        ];
+        
+        for (const keyName of keyNames) {
+            try {
                 // @ts-ignore
-                addKey(import.meta.env[keyName]);
-            } else if (typeof process !== 'undefined' && process.env && process.env[keyName]) {
-                addKey(process.env[keyName]);
-            }
-        } catch (e) {}
+                if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[keyName]) {
+                    // @ts-ignore
+                    addKey(import.meta.env[keyName]);
+                } else if (typeof process !== 'undefined' && process.env && process.env[keyName]) {
+                    addKey(process.env[keyName]);
+                }
+            } catch (e) {}
+        }
     }
 
     return keys;
@@ -452,7 +459,7 @@ const App = () => {
     } catch (err: any) {
       console.error("AI Analysis Error:", err);
       if (err.message && err.message.includes("API key")) {
-          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_API_KEY_... را بررسی کنید.");
+          addLog("error", "خطای کلید API: لطفاً متغیر محیطی VITE_GOOGLE_GENAI_TOKEN را بررسی کنید.");
       } else if (err.message && (err.message.includes("429") || err.message.includes("Quota"))) {
           addLog("error", "محدودیت نرخ (Rate Limit). در حال چرخش کلید برای درخواست بعدی...");
       } else {
