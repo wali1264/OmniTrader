@@ -52,6 +52,7 @@ interface ChatMessage {
 
 type RiskProfile = "conservative" | "moderate" | "aggressive";
 type TradingStyle = "scalping" | "day" | "swing";
+type NewsStrategy = "focused" | "hybrid";
 
 // --- Main Application Component ---
 const App = () => {
@@ -75,6 +76,17 @@ const App = () => {
   // Phase 5 States: Voice & Polish
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [lastSpokenText, setLastSpokenText] = useState("");
+
+  // Phase 6: Source Management Module
+  const [newsStrategy, setNewsStrategy] = useState<NewsStrategy>("hybrid");
+  const [trustedSources, setTrustedSources] = useState<string[]>([
+      "https://www.bloomberg.com",
+      "https://www.reuters.com",
+      "https://www.forexfactory.com",
+      "https://www.coindesk.com"
+  ]);
+  const [newSourceInput, setNewSourceInput] = useState("");
+  const [isSourceManagerOpen, setIsSourceManagerOpen] = useState(false);
 
   // Chat Feature State
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -119,6 +131,23 @@ const App = () => {
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleAddSource = () => {
+      if (newSourceInput && trustedSources.length < 10) {
+          if (!newSourceInput.startsWith('http')) {
+              setTrustedSources([...trustedSources, `https://${newSourceInput}`]);
+          } else {
+              setTrustedSources([...trustedSources, newSourceInput]);
+          }
+          setNewSourceInput("");
+      }
+  };
+
+  const handleRemoveSource = (index: number) => {
+      const newSources = [...trustedSources];
+      newSources.splice(index, 1);
+      setTrustedSources(newSources);
   };
 
   useEffect(() => {
@@ -179,16 +208,30 @@ const App = () => {
         - همیشه حد ضرر (SL) و حد سود (TP) دقیق و منطقی پیشنهاد بده.
       `;
 
+      // Phase 6: Source Management Injection
+      const sourcesList = trustedSources.length > 0 ? trustedSources.join(', ') : "ندارد";
+      const newsStrategyPrompt = enableNews ? `
+        دستورالعمل منابع اطلاعاتی (بسیار مهم):
+        لیست سفید کاربر (منابع معتبر): [${sourcesList}]
+        استراتژی جستجو: ${newsStrategy === 'focused' ? 'متمرکز' : 'ترکیبی'}
+        
+        قوانین جستجو:
+        1. اگر استراتژی 'متمرکز' است: فقط و فقط اخبار موجود در لیست سفید بالا را ملاک قرار بده. سایر منابع وب را نادیده بگیر.
+        2. اگر استراتژی 'ترکیبی' است: ابتدا لیست سفید را بررسی کن (ضریب اطمینان این‌ها ۲ برابر است). سپس اگر خبر فوری و حیاتی در سایر نقاط وب بود، آن را هم لحاظ کن.
+        3. در بخش "منابع" خروجی، حتما ذکر کن خبر از کدام منبع لیست سفید بوده است.
+      ` : "";
+
       const prompt = `
         تو 'آمنی‌تریدر' هستی، یک دستیار فوق‌تخصص و هوشمند برای معامله‌گری در بازارهای مالی.
         
         ${contextPrompt}
         ${strategyPrompt}
+        ${newsStrategyPrompt}
         
         وظیفه:
         1. **شناسایی بصری**: تشخیص بده چه نمادی روی نمودار است (مثلا طلا/XAUUSD، بیت‌کوین، یورو/دلار).
         2. **تحلیل تکنیکال**: کندل‌ها، روندها، خطوط حمایت/مقاومت و الگوهای کلاسیک را بررسی کن.
-        ${enableNews ? '3. **تحلیل فاندامنتال**: از ابزار گوگل سرچ استفاده کن و اخبار مهم 24 ساعت گذشته مرتبط با این نماد را بررسی کن.' : ''}
+        ${enableNews ? '3. **تحلیل فاندامنتال**: طبق قوانین جستجوی بالا، اخبار مهم را استخراج کن.' : ''}
         4. **نتیجه‌گیری**: بر اساس استراتژی کاربر، یک تصمیم قاطع بگیر.
         
         فرمت خروجی (دقیقاً به همین صورت و به زبان فارسی بنویس):
@@ -264,7 +307,7 @@ const App = () => {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, lastAnalysisText, enableNews, riskProfile, tradingStyle, voiceEnabled, lastSpokenText, speak]);
+  }, [isAnalyzing, lastAnalysisText, enableNews, riskProfile, tradingStyle, voiceEnabled, lastSpokenText, speak, newsStrategy, trustedSources]);
 
   // --- Chat Logic ---
   const handleSendMessage = async () => {
@@ -294,6 +337,9 @@ const App = () => {
             کاربر ممکن است از شما بخواهد اخبار را چک کنید یا نظر تخصصی بدهید.
             پاسخ‌ها باید کوتاه، تخصصی و به زبان فارسی باشد.
             اگر کاربر درخواست بررسی فوری اخبار یا وب را داشت، حتما از ابزار جستجو استفاده کن.
+            
+            منابع مورد اعتماد کاربر: ${trustedSources.join(', ')}
+            استراتژی خبری: ${newsStrategy === 'focused' ? 'فقط منابع بالا' : 'ترکیبی'}
           `;
 
           const response = await ai.models.generateContent({
@@ -457,6 +503,11 @@ const App = () => {
                                 tradingStyle === 'scalping' ? 'اسکالپ' : tradingStyle === 'day' ? 'روزانه' : 'سوینگ'
                              }</span>
                         </div>
+                        <div className="text-xs text-slate-400">
+                             جستجو: <span className="text-amber-400 font-bold">{
+                                newsStrategy === 'focused' ? 'متمرکز (لیست سفید)' : 'ترکیبی (هوشمند)'
+                             }</span>
+                        </div>
                     </div>
                     {isAnalyzing && (
                         <div className="flex items-center gap-2 bg-amber-600/20 border border-amber-500/50 px-3 py-1 rounded text-amber-300 text-xs font-bold animate-pulse">
@@ -504,8 +555,15 @@ const App = () => {
                                 onChange={(e) => setEnableNews(e.target.checked)}
                                 className="w-4 h-4 accent-amber-500 cursor-pointer"
                             />
-                            <label htmlFor="newsToggle" className="text-xs text-slate-300 cursor-pointer select-none">همگام‌سازی اخبار</label>
+                            <label htmlFor="newsToggle" className="text-xs text-slate-300 cursor-pointer select-none">اخبار</label>
                         </div>
+
+                         <button 
+                            onClick={() => setIsSourceManagerOpen(true)}
+                            className="text-xs text-amber-400 hover:text-amber-300 underline"
+                        >
+                            تنظیم منابع
+                        </button>
 
                         <div className="flex items-center gap-2" title="فعال سازی هشدار صوتی">
                             <input 
@@ -516,7 +574,7 @@ const App = () => {
                                 className="w-4 h-4 accent-purple-500 cursor-pointer"
                             />
                             <label htmlFor="voiceToggle" className="text-xs text-slate-300 cursor-pointer select-none flex items-center gap-1">
-                                هشدار صوتی
+                                صوت
                                 {voiceEnabled && <span className="text-[8px] text-green-400">●</span>}
                             </label>
                         </div>
@@ -655,6 +713,91 @@ const App = () => {
 
         </div>
       </main>
+
+        {/* Source Manager Modal */}
+        {isSourceManagerOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+                <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-full max-w-md p-0 overflow-hidden">
+                    <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center">
+                        <h3 className="font-bold text-amber-400 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                            </svg>
+                            مدیریت منابع اطلاعاتی
+                        </h3>
+                        <button onClick={() => setIsSourceManagerOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+                    </div>
+                    
+                    <div className="p-4 space-y-6">
+                        {/* Strategy Switch */}
+                        <div className="space-y-2">
+                            <label className="text-xs text-slate-400 block">استراتژی جستجوی اخبار:</label>
+                            <div className="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-lg">
+                                <button 
+                                    onClick={() => setNewsStrategy('focused')}
+                                    className={`py-2 px-3 rounded text-sm transition-all ${newsStrategy === 'focused' ? 'bg-amber-600 text-white font-bold shadow' : 'text-slate-400 hover:bg-slate-800'}`}
+                                >
+                                    متمرکز (فقط لیست)
+                                </button>
+                                <button 
+                                    onClick={() => setNewsStrategy('hybrid')}
+                                    className={`py-2 px-3 rounded text-sm transition-all ${newsStrategy === 'hybrid' ? 'bg-blue-600 text-white font-bold shadow' : 'text-slate-400 hover:bg-slate-800'}`}
+                                >
+                                    ترکیبی (لیست + وب)
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-slate-500">
+                                {newsStrategy === 'focused' 
+                                    ? 'در این حالت ربات فقط سایت‌های لیست زیر را برای اخبار بررسی می‌کند.' 
+                                    : 'در این حالت اولویت با لیست زیر است، اما اخبار مهم سایر سایت‌ها هم بررسی می‌شوند.'}
+                            </p>
+                        </div>
+
+                        {/* White List */}
+                        <div className="space-y-3">
+                            <label className="text-xs text-slate-400 block">لیست سفید (منابع معتبر شما):</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    dir="ltr"
+                                    placeholder="example.com"
+                                    value={newSourceInput}
+                                    onChange={(e) => setNewSourceInput(e.target.value)}
+                                    className="flex-grow bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 focus:border-blue-500 outline-none placeholder:text-slate-600"
+                                />
+                                <button 
+                                    onClick={handleAddSource}
+                                    disabled={!newSourceInput || trustedSources.length >= 10}
+                                    className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white px-3 py-2 rounded transition-colors"
+                                >
+                                    +
+                                </button>
+                            </div>
+                            
+                            <div className="bg-slate-950 border border-slate-800 rounded-lg p-2 max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                                {trustedSources.length === 0 && <p className="text-xs text-slate-600 text-center py-2">هیچ منبعی اضافه نشده است.</p>}
+                                {trustedSources.map((src, idx) => (
+                                    <div key={idx} className="flex justify-between items-center bg-slate-800/50 p-2 rounded group">
+                                        <span className="text-xs text-slate-300 truncate max-w-[250px]" dir="ltr">{src}</span>
+                                        <button 
+                                            onClick={() => handleRemoveSource(idx)}
+                                            className="text-slate-500 hover:text-red-400 px-1"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-[10px] text-slate-500 text-left" dir="ltr">{trustedSources.length} / 10 sources</p>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-slate-800 p-3 border-t border-slate-700 flex justify-end">
+                        <button onClick={() => setIsSourceManagerOpen(false)} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm font-bold">تایید و ذخیره</button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Chat Features: Floating Action Button & Chat Window */}
         <div className="fixed bottom-6 left-6 z-50 flex flex-col items-end gap-4" dir="rtl">
