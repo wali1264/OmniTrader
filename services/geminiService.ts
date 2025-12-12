@@ -146,11 +146,12 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
                           error.status === 503 ||
                           error.message?.includes('Quota') ||
                           error.message?.includes('Resource has been exhausted') ||
-                          error.message?.includes('fetch failed');
+                          error.message?.includes('fetch failed') ||
+                          error.name === 'TypeError'; // Catch Illegal constructor issues potentially
 
       if (isRetryable && attempts < maxAttempts) {
         keyManager.rotate();
-        await new Promise(r => setTimeout(r, 500 * attempts));
+        await new Promise(r => setTimeout(r, 1000 * attempts)); // Increased backoff
         continue;
       }
       
@@ -229,21 +230,25 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
       1. A Modern Medical Specialist (Internal Medicine).
       2. A Master of Iranian Traditional Medicine (Hakim).
       
-      CRITICAL: RETURN ONLY RAW JSON. NO MARKDOWN. NO CODE BLOCKS.
+      CRITICAL INSTRUCTION: 
+      ALL OUTPUT TEXT MUST BE IN PERSIAN (FARSI).
+      The structure must be JSON, but the values inside the JSON strings must be Persian.
+      
+      RETURN RAW JSON ONLY. NO MARKDOWN.
       {
         "modern": {
-          "diagnosis": "string",
-          "reasoning": "string",
-          "treatmentPlan": ["string"],
-          "lifestyle": ["string"],
-          "warnings": ["string"]
+          "diagnosis": "تشخیص (Persian)",
+          "reasoning": "استدلال (Persian)",
+          "treatmentPlan": ["طرح درمان (Persian)"],
+          "lifestyle": ["سبک زندگی (Persian)"],
+          "warnings": ["هشدارها (Persian)"]
         },
         "traditional": {
-          "diagnosis": "string (Mizaj/Akhlat)",
-          "reasoning": "string",
-          "treatmentPlan": ["string (Herbal/Natural)"],
-          "lifestyle": ["string (Sitta-e-Zaruria)"],
-          "warnings": ["string"]
+          "diagnosis": "تشخیص مزاج/اخلاط (Persian)",
+          "reasoning": "استدلال (Persian)",
+          "treatmentPlan": ["تدابیر گیاهی (Persian)"],
+          "lifestyle": ["سته ضروریه (Persian)"],
+          "warnings": ["پرهیزات (Persian)"]
         }
       }
     `;
@@ -270,11 +275,19 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash", 
-      contents: [{ parts }], // Simplified contents structure
+      contents: [{ parts }], 
       config: {}
     });
 
-    return safeParseJSON(response.text || "{}") as DualDiagnosis;
+    const parsedData = safeParseJSON(response.text || "{}");
+
+    // CRITICAL VALIDATION: Ensure we have the required structure
+    // If we don't validate here, the UI will crash when trying to access .modern or .traditional
+    if (!parsedData || !parsedData.modern || !parsedData.traditional) {
+        throw new Error("Invalid or incomplete AI response structure.");
+    }
+
+    return parsedData as DualDiagnosis;
   });
 };
 
@@ -355,7 +368,7 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
       Notes: ${notes}
       Identify colony morphology, hemolysis, lactose fermentation, and likely organism.
       
-      RETURN RAW JSON ONLY:
+      RETURN RAW JSON ONLY (Values in Persian):
       {
         "sampleType": "string",
         "visualFindings": "string",
@@ -382,7 +395,7 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
       You are an expert Radiologist. Analyze this ${modality} of ${region}.
       Provide findings, impression, severity, and anatomical location.
       
-      RETURN RAW JSON ONLY:
+      RETURN RAW JSON ONLY (Values in Persian):
       {
         "modality": "string",
         "region": "string",
@@ -410,7 +423,7 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
       Analyze this physical exam image. Type: ${examType}. 
       Return findings, diagnosis, severity, traditional analysis.
       
-      RETURN RAW JSON ONLY:
+      RETURN RAW JSON ONLY (Values in Persian):
       {
         "examType": "string",
         "findings": ["string"],
@@ -479,7 +492,7 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
       model: "gemini-2.5-flash",
       contents: [{ parts: [
           { inlineData: { mimeType: "audio/mp3", data: base64Audio } },
-          { text: "Listen to this medical dictation (Persian/Farsi). Transcribe it exactly." }
+          { text: "Listen to this medical dictation (Persian/Farsi). Transcribe it exactly in Persian." }
         ]
       }],
       config: {}

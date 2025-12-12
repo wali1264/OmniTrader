@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { getAllRecords, getDoctorProfile, getSettings } from '../services/db';
 import { PatientRecord, AppRoute, PrescriptionItem, DoctorProfile, PrescriptionSettings } from '../types';
-import { UserPlus, Search, LayoutDashboard, User, FileText, ChevronRight, ChevronDown, Clock, Printer, X, Activity, Pill } from 'lucide-react';
+import { UserPlus, Search, LayoutDashboard, User, FileText, ChevronRight, ChevronLeft, ChevronDown, Clock, Printer, X, Activity, Pill, Mic, FileSignature } from 'lucide-react';
 
 interface DashboardProps {
   onNavigate: (route: AppRoute, record?: PatientRecord) => void;
@@ -23,6 +23,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Print State
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [settings, setSettings] = useState<PrescriptionSettings | null>(null);
+
+  // Time based greeting
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'صبح بخیر' : hour < 18 ? 'عصر بخیر' : 'شب بخیر';
 
   useEffect(() => {
     const fetchRecords = async () => {
@@ -214,94 +218,189 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-8 animate-fade-in pb-20">
-      {/* Header Stats */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-             <LayoutDashboard className="text-blue-600" size={32} />
-             داشبورد و بایگانی هوشمند
-          </h1>
-          <p className="text-gray-500 mt-2">خوش آمدید، دکتر. سیستم یکپارچه مدیریت بیماران آماده است.</p>
-        </div>
-        
-        <button 
-          onClick={() => onNavigate(AppRoute.INTAKE)}
-          className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
-        >
-           <UserPlus size={20} />
-           پذیرش بیمار جدید
-        </button>
-      </div>
+      
+      {/* ==================== MOBILE LAYOUT (App-Like Experience) ==================== */}
+      <div className="lg:hidden space-y-6">
+         {/* Greeting Card */}
+         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+            <div className="relative z-10">
+               <p className="text-blue-100 text-xs font-bold mb-1 opacity-80">{new Date().toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+               <h1 className="text-3xl font-black mb-6 tracking-tight">{greeting}، دکتر</h1>
+               <div className="flex gap-3">
+                  <div className="bg-white/20 backdrop-blur-md rounded-2xl p-3 flex-1 flex flex-col items-center justify-center border border-white/10">
+                     <span className="text-2xl font-bold">{records.length}</span>
+                     <span className="text-[10px] text-blue-100 font-bold">کل پرونده‌ها</span>
+                  </div>
+                  <div className="bg-white/20 backdrop-blur-md rounded-2xl p-3 flex-1 flex flex-col items-center justify-center border border-white/10">
+                     <span className="text-2xl font-bold">{records.filter(r => r.status === 'waiting').length}</span>
+                     <span className="text-[10px] text-blue-100 font-bold">در انتظار</span>
+                  </div>
+               </div>
+            </div>
+         </div>
 
-      {/* Search */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
-         <Search className="text-gray-400" />
-         <input 
-            type="text" 
-            placeholder="جستجو در نام بیماران..." 
-            className="flex-1 outline-none text-gray-700 placeholder-gray-400"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-         />
-      </div>
+         {/* Quick Actions Grid */}
+         <div>
+            <h3 className="font-bold text-gray-800 mb-3 text-sm px-1">دسترسی سریع</h3>
+            <div className="grid grid-cols-4 gap-3">
+               <button onClick={() => onNavigate(AppRoute.INTAKE)} className="flex flex-col items-center gap-2 group">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-blue-600 group-active:scale-95 transition-all border border-gray-50">
+                     <UserPlus size={26} />
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-600">پذیرش</span>
+               </button>
+               <button onClick={() => onNavigate(AppRoute.PRESCRIPTION)} className="flex flex-col items-center gap-2 group">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 group-active:scale-95 transition-all border border-gray-50">
+                     <FileSignature size={26} />
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-600">نسخه</span>
+               </button>
+               <button onClick={() => onNavigate(AppRoute.DIAGNOSIS)} className="flex flex-col items-center gap-2 group">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-purple-600 group-active:scale-95 transition-all border border-gray-50">
+                     <Activity size={26} />
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-600">تشخیص</span>
+               </button>
+               <button onClick={() => onNavigate(AppRoute.INTAKE)} className="flex flex-col items-center gap-2 group">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-emerald-600 group-active:scale-95 transition-all border border-gray-50">
+                     <Mic size={26} />
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-600">یادداشت</span>
+               </button>
+            </div>
+         </div>
 
-      {/* Patient List */}
-      <div>
-         <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <User size={20} className="text-gray-500" />
-            لیست پرونده‌های بیماران
-         </h2>
-         
-         {loading ? (
-           <div className="flex justify-center p-10">
-             <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-           </div>
-         ) : filteredPatientNames.length === 0 ? (
-           <div className="text-center p-12 bg-white rounded-3xl border border-gray-100 text-gray-400">
-              <FileText size={48} className="mx-auto mb-4 opacity-50" />
-              <p>هیچ بیماری یافت نشد.</p>
-           </div>
-         ) : (
-           <div className="grid grid-cols-1 gap-4">
-              {filteredPatientNames.map((name) => {
-                 const patientRecords = groupedPatients[name];
-                 const latest = patientRecords[0]; 
-                 
-                 return (
-                    <div key={name} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all hover:shadow-md">
-                        <div 
-                           className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
-                        >
-                            <div className="flex items-center gap-4 cursor-pointer" onClick={() => openPatientFile(name)}>
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${latest.gender === 'male' ? 'bg-blue-500' : 'bg-pink-500'}`}>
-                                    {latest.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-gray-800">{latest.name}</h3>
-                                    <p className="text-sm text-gray-500">{latest.age} ساله - {patientRecords.length} مراجعه ثبت شده</p>
-                                </div>
-                            </div>
-                            <button 
-                                onClick={() => openPatientFile(name)}
-                                className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 flex items-center gap-2"
-                            >
-                                <FileText size={16} />
-                                مشاهده پرونده کامل
-                            </button>
+         {/* Mobile Patient List */}
+         <div>
+            <div className="flex justify-between items-center mb-3 px-1">
+               <h3 className="font-bold text-gray-800 text-sm">بیماران اخیر</h3>
+               <button className="text-blue-600 text-xs font-bold bg-blue-50 px-2 py-1 rounded-lg">مشاهده همه</button>
+            </div>
+            
+            <div className="space-y-3">
+               {loading ? (
+                  <div className="flex justify-center p-4"><div className="animate-spin w-6 h-6 border-2 border-blue-500 rounded-full border-t-transparent"></div></div>
+               ) : Object.keys(groupedPatients).length === 0 ? (
+                  <div className="text-center p-8 bg-white rounded-2xl border border-gray-100 text-gray-400 text-sm">هنوز بیماری ثبت نشده است</div>
+               ) : (
+                  Object.keys(groupedPatients).slice(0, 10).map((name) => {
+                     const patientRecords = groupedPatients[name];
+                     const latest = patientRecords[0];
+                     return (
+                        <div key={name} onClick={() => openPatientFile(name)} className="bg-white p-4 rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-50 flex items-center gap-4 active:scale-95 transition-transform cursor-pointer">
+                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md ${latest.gender === 'male' ? 'bg-gradient-to-tr from-blue-400 to-blue-600' : 'bg-gradient-to-tr from-pink-400 to-pink-600'}`}>
+                              {latest.name.charAt(0)}
+                           </div>
+                           <div className="flex-1 min-w-0">
+                              <h4 className="font-bold text-gray-800 text-base truncate">{latest.name}</h4>
+                              <div className="flex items-center gap-2 mt-1">
+                                 <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{latest.age} ساله</span>
+                                 <span className="text-[10px] text-gray-300">{new Date(latest.visitDate).toLocaleDateString('fa-IR')}</span>
+                              </div>
+                           </div>
+                           <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
+                              <ChevronLeft size={18} />
+                           </div>
                         </div>
-                    </div>
-                 );
-              })}
-           </div>
-         )}
+                     );
+                  })
+               )}
+            </div>
+         </div>
       </div>
 
-      {/* Patient Detail Modal (The Archive View) */}
-      {selectedPatientName && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      {/* ==================== DESKTOP LAYOUT (Classic View) ==================== */}
+      <div className="hidden lg:block space-y-8">
+        {/* Header Stats */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+               <LayoutDashboard className="text-blue-600" size={32} />
+               داشبورد و بایگانی هوشمند
+            </h1>
+            <p className="text-gray-500 mt-2">خوش آمدید، دکتر. سیستم یکپارچه مدیریت بیماران آماده است.</p>
+          </div>
+          
+          <button 
+            onClick={() => onNavigate(AppRoute.INTAKE)}
+            className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
+          >
+             <UserPlus size={20} />
+             پذیرش بیمار جدید
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
+           <Search className="text-gray-400" />
+           <input 
+              type="text" 
+              placeholder="جستجو در نام بیماران..." 
+              className="flex-1 outline-none text-gray-700 placeholder-gray-400"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+           />
+        </div>
+
+        {/* Patient List */}
+        <div>
+           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <User size={20} className="text-gray-500" />
+              لیست پرونده‌های بیماران
+           </h2>
+           
+           {loading ? (
+             <div className="flex justify-center p-10">
+               <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+             </div>
+           ) : filteredPatientNames.length === 0 ? (
+             <div className="text-center p-12 bg-white rounded-3xl border border-gray-100 text-gray-400">
+                <FileText size={48} className="mx-auto mb-4 opacity-50" />
+                <p>هیچ بیماری یافت نشد.</p>
+             </div>
+           ) : (
+             <div className="grid grid-cols-1 gap-4">
+                {filteredPatientNames.map((name) => {
+                   const patientRecords = groupedPatients[name];
+                   const latest = patientRecords[0]; 
+                   
+                   return (
+                      <div key={name} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all hover:shadow-md">
+                          <div 
+                             className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                          >
+                              <div className="flex items-center gap-4 cursor-pointer" onClick={() => openPatientFile(name)}>
+                                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${latest.gender === 'male' ? 'bg-blue-500' : 'bg-pink-500'}`}>
+                                      {latest.name.charAt(0)}
+                                  </div>
+                                  <div>
+                                      <h3 className="font-bold text-lg text-gray-800">{latest.name}</h3>
+                                      <p className="text-sm text-gray-500">{latest.age} ساله - {patientRecords.length} مراجعه ثبت شده</p>
+                                  </div>
+                              </div>
+                              <button 
+                                  onClick={() => openPatientFile(name)}
+                                  className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 flex items-center gap-2"
+                              >
+                                  <FileText size={16} />
+                                  مشاهده پرونده کامل
+                              </button>
+                          </div>
+                      </div>
+                   );
+                })}
+             </div>
+           )}
+        </div>
+      </div>
+
+      {/* ==================== SHARED MODALS / SHEETS ==================== */}
+      
+      {/* DESKTOP MODAL */}
+      <div className={`hidden lg:flex fixed inset-0 z-50 bg-black/50 backdrop-blur-sm items-center justify-center p-4 transition-opacity ${selectedPatientName ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          {selectedPatientName && (
             <div className="bg-white w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-fade-in relative">
-                
-                {/* Modal Header */}
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <div className="flex items-center gap-4">
                         <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl ${selectedPatientHistory[0].gender === 'male' ? 'bg-blue-600' : 'bg-pink-600'}`}>
@@ -321,18 +420,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </button>
                 </div>
 
-                {/* Modal Body - Timeline */}
                 <div className="flex-1 overflow-y-auto p-8 bg-slate-50">
                     <div className="max-w-4xl mx-auto space-y-8">
                         {selectedPatientHistory.map((record, index) => (
                             <div key={record.id} className="relative pl-8 md:pl-0">
-                                {/* Timeline Connector */}
                                 {index !== selectedPatientHistory.length - 1 && (
                                     <div className="absolute top-14 right-[23px] bottom-[-32px] w-0.5 bg-gray-200 z-0 hidden md:block"></div>
                                 )}
-
                                 <div className="flex gap-6 items-start">
-                                    {/* Date Badge */}
                                     <div className="hidden md:flex flex-col items-center min-w-[100px] pt-2 z-10">
                                         <div className="w-12 h-12 rounded-full bg-blue-100 border-4 border-white shadow-sm flex items-center justify-center text-blue-600 mb-2">
                                             <Clock size={20} />
@@ -340,80 +435,37 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                         <span className="font-bold text-gray-700">{new Date(record.visitDate).toLocaleDateString('fa-IR')}</span>
                                         <span className="text-xs text-gray-400">{new Date(record.visitDate).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</span>
                                     </div>
-
-                                    {/* Card */}
                                     <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                                        
-                                        {/* Mobile Date Header */}
                                         <div className="md:hidden flex items-center gap-2 mb-4 text-gray-500 text-sm">
                                             <Clock size={16} />
                                             <span>{new Date(record.visitDate).toLocaleDateString('fa-IR')}</span>
                                         </div>
-
                                         <div className="flex flex-col md:flex-row justify-between gap-6">
                                             <div className="flex-1 space-y-4">
-                                                {/* Vital Signs Snapshot */}
                                                 <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 grid grid-cols-4 gap-2 text-center">
-                                                    <div>
-                                                        <span className="text-[10px] text-gray-400 uppercase">فشار خون</span>
-                                                        <p className="font-bold text-blue-900 text-sm">{record.vitals?.bloodPressure || '-'}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[10px] text-gray-400 uppercase">ضربان</span>
-                                                        <p className="font-bold text-blue-900 text-sm">{record.vitals?.heartRate || '-'}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[10px] text-gray-400 uppercase">دما</span>
-                                                        <p className="font-bold text-blue-900 text-sm">{record.vitals?.temperature || '-'}</p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-[10px] text-gray-400 uppercase">وزن</span>
-                                                        <p className="font-bold text-blue-900 text-sm">{record.vitals?.weight || '-'}</p>
-                                                    </div>
+                                                    <div><span className="text-[10px] text-gray-400 uppercase">فشار خون</span><p className="font-bold text-blue-900 text-sm">{record.vitals?.bloodPressure || '-'}</p></div>
+                                                    <div><span className="text-[10px] text-gray-400 uppercase">ضربان</span><p className="font-bold text-blue-900 text-sm">{record.vitals?.heartRate || '-'}</p></div>
+                                                    <div><span className="text-[10px] text-gray-400 uppercase">دما</span><p className="font-bold text-blue-900 text-sm">{record.vitals?.temperature || '-'}</p></div>
+                                                    <div><span className="text-[10px] text-gray-400 uppercase">وزن</span><p className="font-bold text-blue-900 text-sm">{record.vitals?.weight || '-'}</p></div>
                                                 </div>
-
-                                                {/* Diagnosis */}
                                                 <div>
-                                                    <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2">
-                                                        <Activity size={16} className="text-orange-500" />
-                                                        تشخیص پزشک
-                                                    </h4>
-                                                    <p className="text-gray-600 bg-gray-50 p-3 rounded-lg text-sm leading-relaxed">
-                                                        {record.diagnosis?.modern.diagnosis || record.prescriptions?.[0]?.manualDiagnosis || record.chiefComplaint || '---'}
-                                                    </p>
+                                                    <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2"><Activity size={16} className="text-orange-500" />تشخیص پزشک</h4>
+                                                    <p className="text-gray-600 bg-gray-50 p-3 rounded-lg text-sm leading-relaxed">{record.diagnosis?.modern.diagnosis || record.prescriptions?.[0]?.manualDiagnosis || record.chiefComplaint || '---'}</p>
                                                 </div>
-
-                                                {/* Rx Preview */}
                                                 {record.prescriptions && record.prescriptions.length > 0 && (
                                                     <div>
-                                                        <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2">
-                                                            <Pill size={16} className="text-green-500" />
-                                                            اقلام دارویی
-                                                        </h4>
+                                                        <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2"><Pill size={16} className="text-green-500" />اقلام دارویی</h4>
                                                         <ul className="text-sm space-y-1">
                                                             {record.prescriptions[0].items.slice(0, 3).map((item, i) => (
-                                                                <li key={i} className="text-gray-600 flex justify-between border-b border-gray-50 py-1 last:border-0">
-                                                                    <span>{item.drug}</span>
-                                                                    <span className="text-gray-400 font-mono text-xs">{item.dosage}</span>
-                                                                </li>
+                                                                <li key={i} className="text-gray-600 flex justify-between border-b border-gray-50 py-1 last:border-0"><span>{item.drug}</span><span className="text-gray-400 font-mono text-xs">{item.dosage}</span></li>
                                                             ))}
-                                                            {record.prescriptions[0].items.length > 3 && (
-                                                                <li className="text-xs text-blue-500 pt-1">و {record.prescriptions[0].items.length - 3} مورد دیگر...</li>
-                                                            )}
+                                                            {record.prescriptions[0].items.length > 3 && (<li className="text-xs text-blue-500 pt-1">و {record.prescriptions[0].items.length - 3} مورد دیگر...</li>)}
                                                         </ul>
                                                     </div>
                                                 )}
                                             </div>
-
-                                            {/* Actions */}
                                             <div className="flex flex-col gap-2 justify-center border-r border-gray-100 pr-6 mr-2">
-                                                 <button 
-                                                    onClick={() => handleReprint(record)}
-                                                    className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold hover:bg-indigo-100 transition-colors text-sm"
-                                                 >
-                                                    <Printer size={16} />
-                                                    چاپ مجدد نسخه
-                                                 </button>
+                                                 <button onClick={() => handleReprint(record)} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold hover:bg-indigo-100 transition-colors text-sm"><Printer size={16} />چاپ مجدد نسخه</button>
                                             </div>
                                         </div>
                                     </div>
@@ -423,8 +475,51 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     </div>
                 </div>
             </div>
-        </div>
+          )}
+      </div>
+
+      {/* MOBILE BOTTOM SHEET */}
+      {selectedPatientName && (
+         <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
+             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closePatientFile}></div>
+             <div className="bg-white rounded-t-[2.5rem] p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up">
+                 <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                 
+                 <div className="flex items-center gap-4 mb-6">
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg ${selectedPatientHistory[0].gender === 'male' ? 'bg-blue-600' : 'bg-pink-600'}`}>
+                       {selectedPatientName.charAt(0)}
+                    </div>
+                    <div>
+                       <h2 className="text-2xl font-bold text-gray-800">{selectedPatientName}</h2>
+                       <p className="text-gray-500 text-sm">{selectedPatientHistory[0].age} ساله • {selectedPatientHistory[0].phoneNumber}</p>
+                    </div>
+                 </div>
+
+                 <div className="space-y-4">
+                    {selectedPatientHistory.map((record) => (
+                       <div key={record.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                          <div className="flex justify-between items-center mb-3">
+                             <span className="text-xs font-bold text-gray-500 bg-white px-2 py-1 rounded-lg shadow-sm border border-gray-100">
+                                {new Date(record.visitDate).toLocaleDateString('fa-IR')}
+                             </span>
+                             <button onClick={() => handleReprint(record)} className="text-blue-600 bg-blue-50 p-2 rounded-lg"><Printer size={18} /></button>
+                          </div>
+                          <p className="text-sm font-bold text-gray-800 mb-2">{record.diagnosis?.modern.diagnosis || 'بدون تشخیص نهایی'}</p>
+                          {record.prescriptions?.[0]?.items && (
+                             <div className="text-xs text-gray-500 flex items-center gap-1">
+                                <Pill size={12} />
+                                {record.prescriptions[0].items.length} قلم دارو تجویز شده
+                             </div>
+                          )}
+                       </div>
+                    ))}
+                 </div>
+                 
+                 <button onClick={closePatientFile} className="w-full bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl mt-6">بستن پرونده</button>
+             </div>
+         </div>
       )}
+
     </div>
   );
 };
