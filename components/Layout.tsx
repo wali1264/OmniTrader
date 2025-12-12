@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, LayoutDashboard, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle } from 'lucide-react';
+import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, LayoutDashboard, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download } from 'lucide-react';
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
 
@@ -23,6 +23,10 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   const lastClickTimeRef = useRef(0);
   const [keyStats, setKeyStats] = useState<KeyStats[]>([]);
 
+  // --- PWA Install Logic ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -30,11 +34,31 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // PWA Install Prompt Capture
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setShowInstallBtn(false);
+    }
+    setDeferredPrompt(null);
+  };
 
   // Trigger Logic
   const handleLogoClick = () => {
@@ -123,6 +147,19 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
            {isOnline ? 'شبکه متصل است (AI فعال)' : 'حالت آفلاین (دستی)'}
         </div>
 
+        {/* PWA Install Button (Only visible if installable) */}
+        {showInstallBtn && (
+          <div className="px-4 mt-2">
+            <button 
+              onClick={handleInstallClick}
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 animate-bounce-subtle"
+            >
+              <Download size={18} />
+              نصب نرم‌افزار
+            </button>
+          </div>
+        )}
+
         <nav className="p-4 space-y-2 mt-2 overflow-y-auto flex-1">
           <NavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار دکتر" />
           <NavItem route={AppRoute.INTAKE} icon={User} label="ویزیت هوشمند" />
@@ -168,6 +205,11 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 lg:hidden relative z-40">
           <span className="font-bold text-gray-700">طبیب هوشمند</span>
           <div className="flex items-center gap-4">
+             {showInstallBtn && (
+                <button onClick={handleInstallClick} className="bg-blue-100 text-blue-600 p-2 rounded-lg text-xs font-bold flex items-center gap-1">
+                   <Download size={14} /> نصب
+                </button>
+             )}
              <div className={`p-1.5 rounded-full ${isOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                 {isOnline ? <Wifi size={18} /> : <WifiOff size={18} />}
              </div>

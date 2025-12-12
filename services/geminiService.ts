@@ -25,12 +25,26 @@ class KeyManager {
   private discoverKeys() {
     const foundKeys: string[] = [];
 
+    // 1. Safe Process Env Access (Defensive)
     try {
-      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-        foundKeys.push(process.env.API_KEY);
+      // @ts-ignore
+      if (typeof process !== 'undefined' && process && process.env) {
+        // @ts-ignore
+        const key = process.env.API_KEY;
+        if (key && typeof key === 'string') foundKeys.push(key);
+        
+        // @ts-ignore
+        Object.keys(process.env).forEach(k => {
+            if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
+                // @ts-ignore
+                const val = process.env[k];
+                if (val && typeof val === 'string') foundKeys.push(val);
+            }
+        });
       }
-    } catch (e) { }
+    } catch (e) { /* ignore */ }
 
+    // 2. Safe Vite Env Access
     try {
       // @ts-ignore
       if (typeof import.meta !== 'undefined' && import.meta.env) {
@@ -45,19 +59,9 @@ class KeyManager {
           }
         }
       }
-    } catch (e) { }
-    
-    try {
-        if (typeof process !== 'undefined' && process.env) {
-            Object.keys(process.env).forEach(k => {
-                if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
-                    const val = process.env[k];
-                    if (val && typeof val === 'string') foundKeys.push(val);
-                }
-            });
-        }
-    } catch (e) { }
+    } catch (e) { /* ignore */ }
 
+    // Dedup and Initialize Stats
     this.keys = Array.from(new Set(foundKeys));
     this.keys.forEach(k => {
       if (!this.stats.has(k)) {
@@ -82,7 +86,10 @@ class KeyManager {
 
   public getClient() {
     const key = this.currentKey;
-    if (!key) throw new Error("No API Keys configured. Please check environment variables.");
+    if (!key || typeof key !== 'string') {
+        console.error("Invalid API Key found:", key);
+        throw new Error("No valid API Keys configured.");
+    }
     
     const stat = this.stats.get(key);
     if (stat) {
@@ -138,7 +145,8 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
                           error.status === 429 || 
                           error.status === 503 ||
                           error.message?.includes('Quota') ||
-                          error.message?.includes('Resource has been exhausted');
+                          error.message?.includes('Resource has been exhausted') ||
+                          error.message?.includes('fetch failed');
 
       if (isRetryable && attempts < maxAttempts) {
         keyManager.rotate();
@@ -152,17 +160,21 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
   throw new Error("Maximum retry attempts reached. Service unavailable.");
 }
 
-const fileToGenerativePart = async (file: File) => {
+const fileToGenerativePart = async (file: File | Blob) => {
   return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve({
-        inlineData: {
-          data: base64String,
-          mimeType: file.type,
-        },
-      });
+      if (typeof reader.result === 'string') {
+          const base64String = reader.result.split(',')[1];
+          resolve({
+            inlineData: {
+              data: base64String,
+              mimeType: file.type || 'image/jpeg',
+            },
+          });
+      } else {
+          reject(new Error("Failed to read file as base64 string"));
+      }
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
@@ -182,9 +194,20 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
+// Safe JSON parser
+const safeParseJSON = (text: string) => {
+  try {
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Failed to parse JSON:", text);
+    return {};
+  }
+};
+
 // --- CORE ANALYSIS FUNCTIONS ---
 
-export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> => {
+export const analyzePatient = async (data: PatientData | PatientRecord): Promise<DualDiagnosis> => {
   return withRetry(async (ai) => {
     const parts: any[] = [];
     const promptText = `
@@ -206,7 +229,7 @@ export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> 
       1. A Modern Medical Specialist (Internal Medicine).
       2. A Master of Iranian Traditional Medicine (Hakim).
       
-      OUTPUT JSON FORMAT ONLY:
+      CRITICAL: RETURN ONLY RAW JSON. NO MARKDOWN. NO CODE BLOCKS.
       {
         "modern": {
           "diagnosis": "string",
@@ -227,27 +250,31 @@ export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> 
 
     parts.push({ text: promptText });
 
-    if (data.image) {
-      const imgPart = await fileToGenerativePart(data.image);
-      parts.push(imgPart);
-      parts.push({ text: "Also analyze the attached image of the patient for visual signs." });
+    const imgData = data.image || (data as PatientRecord).imageBlob;
+    if (imgData) {
+      try {
+        const imgPart = await fileToGenerativePart(imgData);
+        parts.push(imgPart);
+        parts.push({ text: "Also analyze the attached image of the patient for visual signs." });
+      } catch(e) { console.warn("Failed to process image", e); }
     }
 
-    if (data.labReport) {
-      const labPart = await fileToGenerativePart(data.labReport);
-      parts.push(labPart);
-      parts.push({ text: "Review the attached lab report." });
+    const labData = data.labReport || (data as PatientRecord).labReportBlob;
+    if (labData) {
+      try {
+        const labPart = await fileToGenerativePart(labData);
+        parts.push(labPart);
+        parts.push({ text: "Review the attached lab report." });
+      } catch(e) { console.warn("Failed to process lab report", e); }
     }
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash", 
-      contents: [{ role: 'user', parts }],
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: [{ parts }], // Simplified contents structure
+      config: {}
     });
 
-    return JSON.parse(response.text || "{}") as DualDiagnosis;
+    return safeParseJSON(response.text || "{}") as DualDiagnosis;
   });
 };
 
@@ -267,7 +294,8 @@ export const generateConsensus = async (modern: DoctorDiagnosis, traditional: Do
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {}
     });
 
     return response.text || "خطا در جمع‌بندی";
@@ -280,7 +308,7 @@ export const generateAudioSummary = async (text: string): Promise<string> => {
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -327,7 +355,7 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
       Notes: ${notes}
       Identify colony morphology, hemolysis, lactose fermentation, and likely organism.
       
-      OUTPUT JSON:
+      RETURN RAW JSON ONLY:
       {
         "sampleType": "string",
         "visualFindings": "string",
@@ -339,13 +367,11 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
     });
 
-    return JSON.parse(response.text || "{}") as LabAnalysis;
+    return safeParseJSON(response.text || "{}") as LabAnalysis;
   });
 };
 
@@ -356,7 +382,7 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
       You are an expert Radiologist. Analyze this ${modality} of ${region}.
       Provide findings, impression, severity, and anatomical location.
       
-      OUTPUT JSON:
+      RETURN RAW JSON ONLY:
       {
         "modality": "string",
         "region": "string",
@@ -369,13 +395,11 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
     });
 
-    return JSON.parse(response.text || "{}") as RadiologyAnalysis;
+    return safeParseJSON(response.text || "{}") as RadiologyAnalysis;
   });
 };
 
@@ -386,7 +410,7 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
       Analyze this physical exam image. Type: ${examType}. 
       Return findings, diagnosis, severity, traditional analysis.
       
-      OUTPUT JSON:
+      RETURN RAW JSON ONLY:
       {
         "examType": "string",
         "findings": ["string"],
@@ -399,13 +423,11 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
     });
 
-    return JSON.parse(response.text || "{}") as PhysicalExamAnalysis;
+    return safeParseJSON(response.text || "{}") as PhysicalExamAnalysis;
   });
 };
 
@@ -421,7 +443,7 @@ export const digitizePrescription = async (image: File): Promise<{ items: Prescr
       2. Dosage = Quantity/Count (e.g. "N=20" -> "20").
       3. Translate instructions to Persian (BID -> هر ۱۲ ساعت).
       
-      OUTPUT JSON:
+      RETURN RAW JSON ONLY:
       {
         "items": [
           { "drug": "string", "dosage": "string", "instruction": "string" }
@@ -442,13 +464,11 @@ export const digitizePrescription = async (image: File): Promise<{ items: Prescr
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
-      config: {
-        responseMimeType: "application/json"
-      }
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
     });
 
-    return JSON.parse(response.text || "{}");
+    return safeParseJSON(response.text || "{}");
   });
 };
 
@@ -457,11 +477,12 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
     const base64Audio = await blobToBase64(audio);
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ role: 'user', parts: [
+      contents: [{ parts: [
           { inlineData: { mimeType: "audio/mp3", data: base64Audio } },
           { text: "Listen to this medical dictation (Persian/Farsi). Transcribe it exactly." }
         ]
-      }]
+      }],
+      config: {}
     });
     return response.text || "";
   });
@@ -477,7 +498,8 @@ export const generateTimelineAnalysis = async (current: any, history: any[]): Pr
         `;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: [{ role: 'user', parts: [{ text: prompt }] }]
+            contents: [{ parts: [{ text: prompt }] }],
+            config: {}
         });
         return response.text || "عدم توانایی در تحلیل روند.";
     });
