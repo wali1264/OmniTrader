@@ -1,10 +1,21 @@
 
-import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import { DoctorDiagnosis, DualDiagnosis, LabAnalysis, PatientData, RadiologyAnalysis, PhysicalExamAnalysis, PatientRecord, CardiologyAnalysis, NeurologyAnalysis, PsychologyAnalysis, OphthalmologyAnalysis, PediatricsAnalysis, OrthopedicsAnalysis, DentistryAnalysis, GynecologyAnalysis, PulmonologyAnalysis, GastroenterologyAnalysis, UrologyAnalysis, HematologyAnalysis, EmergencyAnalysis, GeneticsAnalysis, PrescriptionItem, PatientVitals } from "../types";
+
+// --- API Key Statistics Interface ---
+export interface KeyStats {
+  key: string;
+  maskedKey: string;
+  usageCount: number;
+  errorCount: number;
+  lastUsed: number;
+  status: 'active' | 'cooldown';
+}
 
 // --- API Key Rotation Manager ---
 class KeyManager {
   private keys: string[] = [];
+  private stats: Map<string, KeyStats> = new Map();
   private index = 0;
 
   constructor() {
@@ -14,28 +25,53 @@ class KeyManager {
   private discoverKeys() {
     const foundKeys: string[] = [];
 
-    // 1. Check standard process.env.API_KEY
-    if (process.env.API_KEY) foundKeys.push(process.env.API_KEY);
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        foundKeys.push(process.env.API_KEY);
+      }
+    } catch (e) { }
 
-    // 2. Scan for VITE_GOOGLE_GENAI_TOKEN_* in both process.env and import.meta.env
-    // We safely access import.meta.env if available (Vite)
-    const envVars = { 
-      ...process.env, 
+    try {
       // @ts-ignore
-      ...(typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {}) 
-    };
-    
-    Object.keys(envVars).forEach(k => {
-      if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
-        const val = envVars[k];
-        if (typeof val === 'string' && val.length > 5) { // Basic length check
-          foundKeys.push(val);
+      if (typeof import.meta !== 'undefined' && import.meta.env) {
+        // @ts-ignore
+        const meta = import.meta.env;
+        for (const k in meta) {
+          if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
+            const val = meta[k];
+            if (typeof val === 'string' && val.length > 5) {
+              foundKeys.push(val);
+            }
+          }
         }
+      }
+    } catch (e) { }
+    
+    try {
+        if (typeof process !== 'undefined' && process.env) {
+            Object.keys(process.env).forEach(k => {
+                if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
+                    const val = process.env[k];
+                    if (val && typeof val === 'string') foundKeys.push(val);
+                }
+            });
+        }
+    } catch (e) { }
+
+    this.keys = Array.from(new Set(foundKeys));
+    this.keys.forEach(k => {
+      if (!this.stats.has(k)) {
+        this.stats.set(k, {
+          key: k,
+          maskedKey: `${k.substring(0, 4)}...${k.substring(k.length - 4)}`,
+          usageCount: 0,
+          errorCount: 0,
+          lastUsed: 0,
+          status: 'active'
+        });
       }
     });
     
-    // Dedup
-    this.keys = Array.from(new Set(foundKeys));
     console.log(`[AI System] Multi-Key System Active. Loaded ${this.keys.length} API Keys.`);
   }
 
@@ -47,10 +83,27 @@ class KeyManager {
   public getClient() {
     const key = this.currentKey;
     if (!key) throw new Error("No API Keys configured. Please check environment variables.");
+    
+    const stat = this.stats.get(key);
+    if (stat) {
+      stat.usageCount++;
+      stat.lastUsed = Date.now();
+      stat.status = 'active'; 
+    }
+
     return new GoogleGenAI({ apiKey: key });
   }
 
   public rotate() {
+    const currentKey = this.currentKey;
+    if (currentKey) {
+       const stat = this.stats.get(currentKey);
+       if (stat) {
+         stat.errorCount++;
+         stat.status = 'cooldown';
+       }
+    }
+
     if (this.keys.length > 1) {
       this.index = (this.index + 1) % this.keys.length;
       console.warn(`[AI System] ⚠️ Quota hit or error. Rotating to Key Index: ${this.index + 1}/${this.keys.length}`);
@@ -60,14 +113,16 @@ class KeyManager {
   public hasKeys() {
     return this.keys.length > 0;
   }
+
+  public getStatistics(): KeyStats[] {
+    return Array.from(this.stats.values());
+  }
 }
 
 export const keyManager = new KeyManager();
 
-// --- Retry Wrapper for Robustness ---
 async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
   let attempts = 0;
-  // Try enough times to potentially cycle through keys if needed, cap at 5
   const maxAttempts = Math.min(Math.max(2, keyManager['keys'].length), 5); 
 
   while (attempts < maxAttempts) {
@@ -76,8 +131,8 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
       return await fn(ai);
     } catch (error: any) {
       attempts++;
+      console.warn(`[AI Error] Attempt ${attempts} failed:`, error);
       
-      // Check for Retryable Errors (429 Quota, 503 Service Unavailable)
       const isRetryable = error.message?.includes('429') || 
                           error.message?.includes('503') || 
                           error.status === 429 || 
@@ -86,9 +141,7 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
                           error.message?.includes('Resource has been exhausted');
 
       if (isRetryable && attempts < maxAttempts) {
-        console.warn(`[AI System] Request failed (Attempt ${attempts}). Initiating Failover...`);
         keyManager.rotate();
-        // Exponential backoff or small delay
         await new Promise(r => setTimeout(r, 500 * attempts));
         continue;
       }
@@ -99,7 +152,6 @@ async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
   throw new Error("Maximum retry attempts reached. Service unavailable.");
 }
 
-// Helper to convert File to Base64
 const fileToGenerativePart = async (file: File) => {
   return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
     const reader = new FileReader();
@@ -117,7 +169,6 @@ const fileToGenerativePart = async (file: File) => {
   });
 };
 
-// Helper to convert Blob to Base64 (for Audio)
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -131,27 +182,7 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-const modernSchema = {
-  type: Type.OBJECT,
-  properties: {
-    diagnosis: { type: Type.STRING },
-    reasoning: { type: Type.STRING },
-    treatmentPlan: { type: Type.ARRAY, items: { type: Type.STRING } },
-    lifestyle: { type: Type.ARRAY, items: { type: Type.STRING } },
-    warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
-  }
-};
-
-const traditionalSchema = {
-  type: Type.OBJECT,
-  properties: {
-    diagnosis: { type: Type.STRING, description: "Diagnosis based on Iranian Traditional Medicine (Mizaj, Akhlat)" },
-    reasoning: { type: Type.STRING },
-    treatmentPlan: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Herbal remedies and natural treatments" },
-    lifestyle: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Sitta-e-Zaruria recommendations" },
-    warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
-  }
-};
+// --- CORE ANALYSIS FUNCTIONS ---
 
 export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> => {
   return withRetry(async (ai) => {
@@ -175,7 +206,23 @@ export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> 
       1. A Modern Medical Specialist (Internal Medicine).
       2. A Master of Iranian Traditional Medicine (Hakim).
       
-      Provide a JSON response containing both analyses. 
+      OUTPUT JSON FORMAT ONLY:
+      {
+        "modern": {
+          "diagnosis": "string",
+          "reasoning": "string",
+          "treatmentPlan": ["string"],
+          "lifestyle": ["string"],
+          "warnings": ["string"]
+        },
+        "traditional": {
+          "diagnosis": "string (Mizaj/Akhlat)",
+          "reasoning": "string",
+          "treatmentPlan": ["string (Herbal/Natural)"],
+          "lifestyle": ["string (Sitta-e-Zaruria)"],
+          "warnings": ["string"]
+        }
+      }
     `;
 
     parts.push({ text: promptText });
@@ -194,16 +241,9 @@ export const analyzePatient = async (data: PatientData): Promise<DualDiagnosis> 
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash", 
-      contents: { parts },
+      contents: [{ role: 'user', parts }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            modern: modernSchema,
-            traditional: traditionalSchema
-          }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -227,7 +267,7 @@ export const generateConsensus = async (modern: DoctorDiagnosis, traditional: Do
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
     });
 
     return response.text || "خطا در جمع‌بندی";
@@ -240,7 +280,7 @@ export const generateAudioSummary = async (text: string): Promise<string> => {
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -256,8 +296,6 @@ export const generateAudioSummary = async (text: string): Promise<string> => {
   });
 };
 
-// Chat is stateful, so we just return the client. The UI should handle re-creation if it fails severely, 
-// but for simple text chats, the quota error usually happens on connection or message.
 export const createMedicalChat = (patientData: PatientData, diagnosis: DualDiagnosis, consensus: string) => {
   const ai = keyManager.getClient();
   const systemContext = `
@@ -288,24 +326,22 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
       You are an expert Microbiologist. Analyze this image of a ${type} culture.
       Notes: ${notes}
       Identify colony morphology, hemolysis, lactose fermentation, and likely organism.
-      Return JSON.
+      
+      OUTPUT JSON:
+      {
+        "sampleType": "string",
+        "visualFindings": "string",
+        "suspectedOrganism": "string",
+        "recommendations": ["string"],
+        "severity": "low" | "medium" | "high"
+      }
     `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: { parts: [imgPart, { text: prompt }] },
+      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            sampleType: { type: Type.STRING },
-            visualFindings: { type: Type.STRING },
-            suspectedOrganism: { type: Type.STRING },
-            recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
-            severity: { type: Type.STRING, enum: ["low", "medium", "high"] }
-          }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -319,24 +355,23 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
     const prompt = `
       You are an expert Radiologist. Analyze this ${modality} of ${region}.
       Provide findings, impression, severity, and anatomical location.
+      
+      OUTPUT JSON:
+      {
+        "modality": "string",
+        "region": "string",
+        "findings": ["string"],
+        "impression": "string",
+        "severity": "normal" | "abnormal" | "critical",
+        "anatomicalLocation": "string"
+      }
     `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: { parts: [imgPart, { text: prompt }] },
+      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            modality: { type: Type.STRING },
-            region: { type: Type.STRING },
-            findings: { type: Type.ARRAY, items: { type: Type.STRING } },
-            impression: { type: Type.STRING },
-            severity: { type: Type.STRING, enum: ["normal", "abnormal", "critical"] },
-            anatomicalLocation: { type: Type.STRING },
-          }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -347,24 +382,26 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
 export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongue' | 'face'): Promise<PhysicalExamAnalysis> => {
   return withRetry(async (ai) => {
     const imgPart = await fileToGenerativePart(image);
-    const prompt = `Analyze this physical exam image. Type: ${examType}. Return findings, diagnosis, severity, traditional analysis.`;
+    const prompt = `
+      Analyze this physical exam image. Type: ${examType}. 
+      Return findings, diagnosis, severity, traditional analysis.
+      
+      OUTPUT JSON:
+      {
+        "examType": "string",
+        "findings": ["string"],
+        "diagnosis": "string",
+        "severity": "low" | "medium" | "high",
+        "traditionalAnalysis": "string",
+        "recommendations": ["string"]
+      }
+    `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: { parts: [imgPart, { text: prompt }] },
+      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            examType: { type: Type.STRING },
-            findings: { type: Type.ARRAY, items: { type: Type.STRING } },
-            diagnosis: { type: Type.STRING },
-            severity: { type: Type.STRING, enum: ["low", "medium", "high"] },
-            traditionalAnalysis: { type: Type.STRING },
-            recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -377,46 +414,37 @@ export const digitizePrescription = async (image: File): Promise<{ items: Prescr
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
       You are an expert Senior Pharmacist (Dr. Darusaz).
-      Analyze this prescription.
-      Extract items (drug, dosage as clean number like '5', '10', instructions in Persian).
-      Extract Diagnosis and Vitals if present.
+      Analyze this prescription image to extract data.
+
+      RULES:
+      1. Drug Name includes Strength (e.g. "Amoxicillin 500mg").
+      2. Dosage = Quantity/Count (e.g. "N=20" -> "20").
+      3. Translate instructions to Persian (BID -> هر ۱۲ ساعت).
+      
+      OUTPUT JSON:
+      {
+        "items": [
+          { "drug": "string", "dosage": "string", "instruction": "string" }
+        ],
+        "diagnosis": "string",
+        "vitals": {
+          "bloodPressure": "string",
+          "heartRate": "string",
+          "temperature": "string",
+          "spO2": "string",
+          "weight": "string",
+          "height": "string",
+          "respiratoryRate": "string",
+          "bloodSugar": "string"
+        }
+      }
     `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: { parts: [imgPart, { text: prompt }] },
+      contents: [{ role: 'user', parts: [imgPart, { text: prompt }] }],
       config: {
-        responseMimeType: "application/json",
-         responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            items: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  drug: { type: Type.STRING },
-                  dosage: { type: Type.STRING },
-                  instruction: { type: Type.STRING }
-                }
-              }
-            },
-            diagnosis: { type: Type.STRING },
-            vitals: {
-              type: Type.OBJECT,
-              properties: {
-                bloodPressure: { type: Type.STRING },
-                heartRate: { type: Type.STRING },
-                temperature: { type: Type.STRING },
-                spO2: { type: Type.STRING },
-                weight: { type: Type.STRING },
-                height: { type: Type.STRING },
-                respiratoryRate: { type: Type.STRING },
-                bloodSugar: { type: Type.STRING }
-              }
-            }
-          }
-        }
+        responseMimeType: "application/json"
       }
     });
 
@@ -429,12 +457,11 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
     const base64Audio = await blobToBase64(audio);
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: {
-        parts: [
+      contents: [{ role: 'user', parts: [
           { inlineData: { mimeType: "audio/mp3", data: base64Audio } },
           { text: "Listen to this medical dictation (Persian/Farsi). Transcribe it exactly." }
         ]
-      }
+      }]
     });
     return response.text || "";
   });
@@ -450,7 +477,7 @@ export const generateTimelineAnalysis = async (current: any, history: any[]): Pr
         `;
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: prompt
+            contents: [{ role: 'user', parts: [{ text: prompt }] }]
         });
         return response.text || "عدم توانایی در تحلیل روند.";
     });
