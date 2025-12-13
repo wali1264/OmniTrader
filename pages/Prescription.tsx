@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -472,60 +472,82 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
             </div>
          </div>
 
+         {/* NEW PATIENT MODAL - RESPONSIVE */}
          {showNewPatientModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-               <div className="bg-white w-full max-w-lg rounded-3xl p-8 shadow-2xl relative animate-fade-in max-h-[90vh] overflow-y-auto">
-                  <button onClick={() => setShowNewPatientModal(false)} className="absolute top-6 left-6 text-gray-400 hover:text-gray-600"><X /></button>
-                  <h3 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2"><UserPlus className="text-teal-500" />ثبت بیمار جدید</h3>
+            <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
+               {/* Mobile: Full Screen Sheet | Desktop: Centered Card */}
+               <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
                   
-                  <div className="space-y-4">
+                  {/* Header */}
+                  <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10 lg:rounded-t-3xl">
+                     <h3 className="text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2">
+                        <div className="bg-teal-100 p-2 rounded-xl text-teal-600"><UserPlus size={24} /></div>
+                        ثبت بیمار جدید
+                     </h3>
+                     <button onClick={() => setShowNewPatientModal(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors">
+                        <X size={20} />
+                     </button>
+                  </div>
+                  
+                  {/* Scrollable Content */}
+                  <div className="flex-1 overflow-y-auto p-5 lg:p-8 space-y-5">
                      <div>
-                       <label className="block text-sm font-bold text-gray-600 mb-1">نام و نام خانوادگی</label>
-                       <input autoFocus className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all" placeholder="مثال: علی رضایی" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} />
+                       <label className="block text-sm font-bold text-gray-600 mb-2">نام و نام خانوادگی</label>
+                       <div className="relative">
+                          <User className="absolute right-3 top-3.5 text-gray-400" size={18} />
+                          <input autoFocus className="w-full p-3.5 pr-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all border border-gray-100" placeholder="مثال: علی رضایی" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} />
+                       </div>
                      </div>
 
                      <div>
-                       <label className="block text-sm font-bold text-gray-600 mb-1">شماره تماس</label>
+                       <label className="block text-sm font-bold text-gray-600 mb-2">شماره تماس</label>
                        <div className="relative">
-                         <input className="w-full p-3 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" />
-                         <Phone className="absolute left-3 top-3 text-gray-400" size={18} />
+                         <input type="tel" className="w-full p-3.5 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left border border-gray-100 font-mono" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" />
+                         <Phone className="absolute left-3 top-3.5 text-gray-400" size={18} />
                        </div>
                      </div>
 
                      <div className="flex gap-4">
                         <div className="flex-1">
-                          <label className="block text-sm font-bold text-gray-600 mb-1">سن (سال)</label>
-                          <input type="number" className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} />
+                          <label className="block text-sm font-bold text-gray-600 mb-2">سن</label>
+                          <input type="number" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} placeholder="سال" />
                         </div>
-                        <div className="flex-1">
-                          <label className="block text-sm font-bold text-gray-600 mb-1">جنسیت</label>
-                          <div className="flex bg-gray-50 p-1 rounded-xl">
-                            <button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>آقا</button>
-                            <button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow text-pink-600' : 'text-gray-400'}`}>خانم</button>
+                        <div className="flex-[1.5]">
+                          <label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label>
+                          <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100">
+                            <button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>آقا</button>
+                            <button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow-sm text-pink-600' : 'text-gray-400'}`}>خانم</button>
                           </div>
                         </div>
                      </div>
 
                      <div>
-                       <label className="block text-sm font-bold text-gray-600 mb-1">وزن (کیلوگرم)</label>
+                       <label className="block text-sm font-bold text-gray-600 mb-2">وزن (کیلوگرم)</label>
                        <div className="relative">
-                          <input type="number" className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center" placeholder="kg" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} />
-                          <Scale className="absolute left-3 top-3 text-gray-400" size={18} />
+                          <input type="number" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100" placeholder="kg" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} />
+                          <Scale className="absolute left-3 top-3.5 text-gray-400" size={18} />
                        </div>
                      </div>
 
                      <div className="pt-2">
-                       <label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-1"><Activity size={16} />سابقه بیماری</label>
-                       <input className="w-full p-3 bg-orange-50/50 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} />
+                       <label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-2"><Activity size={16} />سابقه بیماری</label>
+                       <input className="w-full p-3.5 bg-orange-50/30 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} />
                      </div>
 
                      <div>
-                       <label className="flex items-center gap-2 text-sm font-bold text-red-600 mb-1"><AlertCircle size={16} />حساسیت‌ها و آلرژی</label>
-                       <input className="w-full p-3 bg-red-50/50 border border-red-100 rounded-xl outline-none focus:ring-2 focus:ring-red-200" placeholder="پنی‌سیلین، آسپرین..." value={newPatientAllergies} onChange={e => setNewPatientAllergies(e.target.value)} />
+                       <label className="flex items-center gap-2 text-sm font-bold text-red-600 mb-2"><AlertCircle size={16} />حساسیت‌ها و آلرژی</label>
+                       <input className="w-full p-3.5 bg-red-50/30 border border-red-100 rounded-xl outline-none focus:ring-2 focus:ring-red-200" placeholder="پنی‌سیلین، آسپرین..." value={newPatientAllergies} onChange={e => setNewPatientAllergies(e.target.value)} />
                      </div>
+                  </div>
 
-                     <button onClick={handleRegisterPatient} disabled={!newPatientName} className="w-full bg-teal-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-teal-200 hover:bg-teal-700 mt-4 disabled:opacity-50 flex items-center justify-center gap-2">
-                       <Save size={20} />
+                  {/* Footer Action - Now properly at the bottom of the flex column */}
+                  <div className="p-4 lg:p-6 border-t border-gray-100 bg-white lg:rounded-b-3xl">
+                     <button 
+                       onClick={handleRegisterPatient} 
+                       disabled={!newPatientName} 
+                       className="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-teal-200 hover:shadow-xl active:scale-[0.98] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-3 text-lg"
+                     >
+                       <Save size={22} />
                        ذخیره پرونده اولیه
                      </button>
                   </div>

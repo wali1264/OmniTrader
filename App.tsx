@@ -27,7 +27,8 @@ import { AppRoute, PatientRecord } from './types';
 import { keyManager } from './services/geminiService';
 
 function App() {
-  const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.DASHBOARD);
+  // Default route set to PRESCRIPTION (Mez-e Kar) as per doctor's workflow requirement
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
   const [currentRecord, setCurrentRecord] = useState<PatientRecord | null>(null);
 
   const handleNavigate = (route: AppRoute, record?: PatientRecord) => {

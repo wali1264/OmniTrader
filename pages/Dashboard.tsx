@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { getAllRecords, getDoctorProfile, getSettings } from '../services/db';
 import { PatientRecord, AppRoute, PrescriptionItem, DoctorProfile, PrescriptionSettings } from '../types';
-import { UserPlus, Search, LayoutDashboard, User, FileText, ChevronRight, ChevronLeft, ChevronDown, Clock, Printer, X, Activity, Pill, Mic, FileSignature } from 'lucide-react';
+import { Search, Archive, User, FileText, ChevronLeft, Clock, Printer, X, Activity, Pill } from 'lucide-react';
 
 interface DashboardProps {
   onNavigate: (route: AppRoute, record?: PatientRecord) => void;
@@ -23,10 +23,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   // Print State
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [settings, setSettings] = useState<PrescriptionSettings | null>(null);
-
-  // Time based greeting
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'صبح بخیر' : hour < 18 ? 'عصر بخیر' : 'شب بخیر';
 
   useEffect(() => {
     const fetchRecords = async () => {
@@ -219,173 +215,120 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   return (
     <div className="space-y-8 animate-fade-in pb-20">
       
-      {/* ==================== MOBILE LAYOUT (App-Like Experience) ==================== */}
-      <div className="lg:hidden space-y-6">
-         {/* Greeting Card */}
-         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
-            <div className="relative z-10">
-               <p className="text-blue-100 text-xs font-bold mb-1 opacity-80">{new Date().toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-               <h1 className="text-3xl font-black mb-6 tracking-tight">{greeting}، دکتر</h1>
-               <div className="flex gap-3">
-                  <div className="bg-white/20 backdrop-blur-md rounded-2xl p-3 flex-1 flex flex-col items-center justify-center border border-white/10">
-                     <span className="text-2xl font-bold">{records.length}</span>
-                     <span className="text-[10px] text-blue-100 font-bold">کل پرونده‌ها</span>
-                  </div>
-                  <div className="bg-white/20 backdrop-blur-md rounded-2xl p-3 flex-1 flex flex-col items-center justify-center border border-white/10">
-                     <span className="text-2xl font-bold">{records.filter(r => r.status === 'waiting').length}</span>
-                     <span className="text-[10px] text-blue-100 font-bold">در انتظار</span>
-                  </div>
-               </div>
+      {/* ==================== MOBILE LAYOUT (Archive View) ==================== */}
+      <div className="lg:hidden space-y-4">
+         
+         {/* Simple Header */}
+         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+            <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+               <Archive size={24} className="text-blue-600" />
+               بایگانی پرونده‌ها
+            </h1>
+            <div className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-bold">
+               {records.length} پرونده
             </div>
          </div>
 
-         {/* Quick Actions Grid */}
-         <div>
-            <h3 className="font-bold text-gray-800 mb-3 text-sm px-1">دسترسی سریع</h3>
-            <div className="grid grid-cols-4 gap-3">
-               <button onClick={() => onNavigate(AppRoute.INTAKE)} className="flex flex-col items-center gap-2 group">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-blue-600 group-active:scale-95 transition-all border border-gray-50">
-                     <UserPlus size={26} />
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-600">پذیرش</span>
-               </button>
-               <button onClick={() => onNavigate(AppRoute.PRESCRIPTION)} className="flex flex-col items-center gap-2 group">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-indigo-600 group-active:scale-95 transition-all border border-gray-50">
-                     <FileSignature size={26} />
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-600">نسخه</span>
-               </button>
-               <button onClick={() => onNavigate(AppRoute.DIAGNOSIS)} className="flex flex-col items-center gap-2 group">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-purple-600 group-active:scale-95 transition-all border border-gray-50">
-                     <Activity size={26} />
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-600">تشخیص</span>
-               </button>
-               <button onClick={() => onNavigate(AppRoute.INTAKE)} className="flex flex-col items-center gap-2 group">
-                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center text-emerald-600 group-active:scale-95 transition-all border border-gray-50">
-                     <Mic size={26} />
-                  </div>
-                  <span className="text-[10px] font-bold text-gray-600">یادداشت</span>
-               </button>
-            </div>
+         {/* Search */}
+         <div className="relative">
+            <input 
+               className="w-full p-4 pl-12 bg-white rounded-2xl shadow-sm border border-gray-100 outline-none focus:border-blue-500 transition-all text-gray-700"
+               placeholder="جستجوی نام بیمار..."
+               value={searchTerm}
+               onChange={e => setSearchTerm(e.target.value)}
+            />
+            <Search className="absolute left-4 top-4 text-gray-400" />
          </div>
 
          {/* Mobile Patient List */}
-         <div>
-            <div className="flex justify-between items-center mb-3 px-1">
-               <h3 className="font-bold text-gray-800 text-sm">بیماران اخیر</h3>
-               <button className="text-blue-600 text-xs font-bold bg-blue-50 px-2 py-1 rounded-lg">مشاهده همه</button>
-            </div>
-            
-            <div className="space-y-3">
-               {loading ? (
-                  <div className="flex justify-center p-4"><div className="animate-spin w-6 h-6 border-2 border-blue-500 rounded-full border-t-transparent"></div></div>
-               ) : Object.keys(groupedPatients).length === 0 ? (
-                  <div className="text-center p-8 bg-white rounded-2xl border border-gray-100 text-gray-400 text-sm">هنوز بیماری ثبت نشده است</div>
-               ) : (
-                  Object.keys(groupedPatients).slice(0, 10).map((name) => {
-                     const patientRecords = groupedPatients[name];
-                     const latest = patientRecords[0];
-                     return (
-                        <div key={name} onClick={() => openPatientFile(name)} className="bg-white p-4 rounded-3xl shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-50 flex items-center gap-4 active:scale-95 transition-transform cursor-pointer">
-                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-md ${latest.gender === 'male' ? 'bg-gradient-to-tr from-blue-400 to-blue-600' : 'bg-gradient-to-tr from-pink-400 to-pink-600'}`}>
-                              {latest.name.charAt(0)}
-                           </div>
-                           <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-gray-800 text-base truncate">{latest.name}</h4>
-                              <div className="flex items-center gap-2 mt-1">
-                                 <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{latest.age} ساله</span>
-                                 <span className="text-[10px] text-gray-300">{new Date(latest.visitDate).toLocaleDateString('fa-IR')}</span>
-                              </div>
-                           </div>
-                           <div className="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
-                              <ChevronLeft size={18} />
+         <div className="space-y-3">
+            {loading ? (
+               <div className="flex justify-center p-4"><div className="animate-spin w-6 h-6 border-2 border-blue-500 rounded-full border-t-transparent"></div></div>
+            ) : filteredPatientNames.length === 0 ? (
+               <div className="text-center p-8 bg-white rounded-2xl border border-gray-100 text-gray-400 text-sm">پرونده‌ای یافت نشد</div>
+            ) : (
+               filteredPatientNames.map((name) => {
+                  const patientRecords = groupedPatients[name];
+                  const latest = patientRecords[0];
+                  return (
+                     <div key={name} onClick={() => openPatientFile(name)} className="bg-white p-4 rounded-2xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] border border-gray-50 flex items-center gap-4 active:scale-[0.98] transition-transform cursor-pointer">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md ${latest.gender === 'male' ? 'bg-blue-500' : 'bg-pink-500'}`}>
+                           {latest.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                           <h4 className="font-bold text-gray-800 text-sm truncate">{latest.name}</h4>
+                           <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{latest.age} ساله</span>
+                              <span className="text-[10px] text-gray-400">{new Date(latest.visitDate).toLocaleDateString('fa-IR')}</span>
                            </div>
                         </div>
-                     );
-                  })
-               )}
-            </div>
+                        <ChevronLeft size={18} className="text-gray-300" />
+                     </div>
+                  );
+               })
+            )}
          </div>
       </div>
 
-      {/* ==================== DESKTOP LAYOUT (Classic View) ==================== */}
+      {/* ==================== DESKTOP LAYOUT (Archive View) ==================== */}
       <div className="hidden lg:block space-y-8">
-        {/* Header Stats */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        {/* Header */}
+        <div className="flex justify-between items-center border-b border-gray-200 pb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-               <LayoutDashboard className="text-blue-600" size={32} />
-               داشبورد و بایگانی هوشمند
+               <Archive className="text-blue-600" size={32} />
+               بایگانی و مدیریت پرونده‌ها
             </h1>
-            <p className="text-gray-500 mt-2">خوش آمدید، دکتر. سیستم یکپارچه مدیریت بیماران آماده است.</p>
+            <p className="text-gray-500 mt-2 text-sm">جستجو و مرور سوابق پزشکی بیماران</p>
           </div>
-          
-          <button 
-            onClick={() => onNavigate(AppRoute.INTAKE)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center gap-2"
-          >
-             <UserPlus size={20} />
-             پذیرش بیمار جدید
-          </button>
+          <div className="bg-white px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 shadow-sm">
+             تعداد کل پرونده‌ها: {records.length}
+          </div>
         </div>
 
         {/* Search */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3">
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 max-w-2xl">
            <Search className="text-gray-400" />
            <input 
               type="text" 
               placeholder="جستجو در نام بیماران..." 
-              className="flex-1 outline-none text-gray-700 placeholder-gray-400"
+              className="flex-1 outline-none text-gray-700 placeholder-gray-400 text-lg"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
            />
         </div>
 
-        {/* Patient List */}
+        {/* Patient List Grid */}
         <div>
-           <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <User size={20} className="text-gray-500" />
-              لیست پرونده‌های بیماران
-           </h2>
-           
            {loading ? (
              <div className="flex justify-center p-10">
                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
              </div>
            ) : filteredPatientNames.length === 0 ? (
-             <div className="text-center p-12 bg-white rounded-3xl border border-gray-100 text-gray-400">
-                <FileText size={48} className="mx-auto mb-4 opacity-50" />
-                <p>هیچ بیماری یافت نشد.</p>
+             <div className="text-center p-20 bg-white rounded-3xl border border-gray-100 text-gray-400">
+                <Archive size={64} className="mx-auto mb-4 opacity-20" />
+                <p>پرونده‌ای با این مشخصات یافت نشد.</p>
              </div>
            ) : (
-             <div className="grid grid-cols-1 gap-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {filteredPatientNames.map((name) => {
                    const patientRecords = groupedPatients[name];
                    const latest = patientRecords[0]; 
                    
                    return (
-                      <div key={name} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden transition-all hover:shadow-md">
-                          <div 
-                             className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
-                          >
-                              <div className="flex items-center gap-4 cursor-pointer" onClick={() => openPatientFile(name)}>
-                                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${latest.gender === 'male' ? 'bg-blue-500' : 'bg-pink-500'}`}>
-                                      {latest.name.charAt(0)}
-                                  </div>
-                                  <div>
-                                      <h3 className="font-bold text-lg text-gray-800">{latest.name}</h3>
-                                      <p className="text-sm text-gray-500">{latest.age} ساله - {patientRecords.length} مراجعه ثبت شده</p>
-                                  </div>
+                      <div key={name} onClick={() => openPatientFile(name)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer group">
+                          <div className="flex items-center gap-4">
+                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white font-bold text-xl shadow-sm group-hover:scale-105 transition-transform ${latest.gender === 'male' ? 'bg-gradient-to-br from-blue-500 to-blue-600' : 'bg-gradient-to-br from-pink-500 to-pink-600'}`}>
+                                  {latest.name.charAt(0)}
                               </div>
-                              <button 
-                                  onClick={() => openPatientFile(name)}
-                                  className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 flex items-center gap-2"
-                              >
-                                  <FileText size={16} />
-                                  مشاهده پرونده کامل
-                              </button>
+                              <div>
+                                  <h3 className="font-bold text-lg text-gray-800 group-hover:text-blue-700 transition-colors">{latest.name}</h3>
+                                  <p className="text-sm text-gray-500 mt-1">{latest.age} ساله • {patientRecords.length} مراجعه</p>
+                              </div>
+                          </div>
+                          <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center text-xs text-gray-400">
+                             <span>آخرین ویزیت: {new Date(latest.visitDate).toLocaleDateString('fa-IR')}</span>
+                             <span className="flex items-center gap-1 group-hover:text-blue-600 transition-colors font-bold">مشاهده <ChevronLeft size={14} /></span>
                           </div>
                       </div>
                    );

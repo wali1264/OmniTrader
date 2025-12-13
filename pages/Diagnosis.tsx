@@ -503,6 +503,9 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
                                 </button>
                              )}
                           </div>
+                          
+                          {/* SPACER FOR FAB VISIBILITY */}
+                          <div className="h-24"></div>
                        </>
                     )}
                 </div>
@@ -553,9 +556,9 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
          {consensus && mobileTab !== 'chat' && (
             <button 
                onClick={handleTransferToDesk}
-               className="fixed bottom-20 left-4 bg-emerald-600 text-white px-5 py-3 rounded-2xl font-bold shadow-2xl shadow-emerald-400/50 flex items-center gap-2 z-50 animate-bounce-subtle"
+               className="fixed bottom-24 left-4 bg-emerald-600 text-white px-4 py-2 rounded-2xl font-bold shadow-2xl shadow-emerald-400/50 flex items-center gap-2 z-50 animate-bounce-subtle text-sm"
             >
-               <FileText size={20} />
+               <FileText size={18} />
                <span>انتقال به میز کار</span>
             </button>
          )}

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, LayoutDashboard, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, Home, UserPlus, Grid } from 'lucide-react';
+import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid } from 'lucide-react';
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
 
@@ -156,9 +156,9 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
 
         <nav className="p-4 space-y-2 mt-2 overflow-y-auto flex-1 custom-scrollbar">
           <NavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار دکتر" />
-          <NavItem route={AppRoute.INTAKE} icon={User} label="ویزیت هوشمند" />
+          <NavItem route={AppRoute.INTAKE} icon={User} label="مشاوره هوشمند" />
           <NavItem route={AppRoute.DIAGNOSIS} icon={Stethoscope} label="اتاق تشخیص" />
-          <NavItem route={AppRoute.DASHBOARD} icon={LayoutDashboard} label="داشبورد" />
+          <NavItem route={AppRoute.DASHBOARD} icon={Archive} label="بایگانی" />
           
           <div className="border-t my-4 border-gray-100 pt-4">
             <p className="text-xs font-bold text-gray-400 px-4 mb-2">دپارتمان‌های تخصصی</p>
@@ -229,27 +229,29 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around items-end pb-safe px-2 py-2 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-2xl">
            <BottomNavItem 
              route={AppRoute.DASHBOARD} 
-             icon={Home} 
-             label="خانه" 
+             icon={FolderOpen} 
+             label="بایگانی" 
              isActive={currentRoute === AppRoute.DASHBOARD} 
            />
            <BottomNavItem 
              route={AppRoute.INTAKE} 
              icon={UserPlus} 
-             label="ویزیت" 
+             label="مشاوره" 
              isActive={currentRoute === AppRoute.INTAKE} 
            />
-           <BottomNavItem 
-             route={AppRoute.DIAGNOSIS} 
-             icon={Activity} 
-             label="تشخیص" 
-             isActive={currentRoute === AppRoute.DIAGNOSIS} 
-           />
+           {/* SWAPPED: Prescription is now centered (Index 2) */}
            <BottomNavItem 
              route={AppRoute.PRESCRIPTION} 
              icon={FileSignature} 
              label="میز کار" 
              isActive={currentRoute === AppRoute.PRESCRIPTION} 
+           />
+           {/* SWAPPED: Diagnosis moved to the right (Index 3) */}
+           <BottomNavItem 
+             route={AppRoute.DIAGNOSIS} 
+             icon={Activity} 
+             label="تشخیص" 
+             isActive={currentRoute === AppRoute.DIAGNOSIS} 
            />
            <BottomNavItem 
              icon={Grid} 

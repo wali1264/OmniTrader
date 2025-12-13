@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Camera, ArrowLeft, Mic, MicOff, Loader2, Search, AlertCircle, Activity, Lock, User } from 'lucide-react';
+import { Upload, Camera, ArrowLeft, Mic, MicOff, Loader2, Search, AlertCircle, Activity, Lock, User, ChevronRight, ChevronLeft, Check, FileText, Stethoscope } from 'lucide-react';
 import { PatientData, PatientVitals, PatientRecord } from '../types';
 import { transcribeMedicalAudio } from '../services/geminiService';
 import { saveRecord, getUniquePatients } from '../services/db';
@@ -14,6 +14,9 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [allPatients, setAllPatients] = useState<PatientRecord[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
+
+  // Mobile Wizard State
+  const [mobileStep, setMobileStep] = useState<1 | 2 | 3>(1);
 
   const [formData, setFormData] = useState<Partial<PatientData>>({
     gender: 'male',
@@ -30,7 +33,6 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
   });
 
   const [saving, setSaving] = useState(false);
-  // Track if a patient has been selected from the database
   const [isPatientSelected, setIsPatientSelected] = useState(false);
 
   useEffect(() => {
@@ -49,11 +51,14 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
       age: patient.age,
       gender: patient.gender,
       phoneNumber: patient.phoneNumber,
-      // Preserve vitals or reset them? Usually reset for new visit, but keeping existing logic
     }));
     setSearchTerm('');
     setShowDropdown(false);
     setIsPatientSelected(true);
+    // On mobile, auto-advance to next step after selection
+    if (window.innerWidth < 1024) {
+        setMobileStep(2);
+    }
   };
 
   const filteredPatients = allPatients.filter(p => p.name.includes(searchTerm));
@@ -67,7 +72,6 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
   const startRecording = async (field: 'chiefComplaint' | 'history') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Use mimeType if supported for better compatibility, otherwise default
       const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
                       ? { mimeType: 'audio/webm;codecs=opus' } 
                       : undefined;
@@ -83,7 +87,6 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
       };
 
       mediaRecorder.onstop = async () => {
-        // Create blob with correct type
         const type = options?.mimeType || 'audio/webm';
         const audioBlob = new Blob(audioChunksRef.current, { type });
         
@@ -125,12 +128,9 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
     let bsa = '';
 
     if (w > 0 && h > 0) {
-      // BMI = kg / m^2
       const heightInMeters = h / 100;
       const bmiVal = w / (heightInMeters * heightInMeters);
       bmi = bmiVal.toFixed(1);
-
-      // BSA (Mosteller) = sqrt((height(cm) * weight(kg)) / 3600)
       const bsaVal = Math.sqrt((h * w) / 3600);
       bsa = bsaVal.toFixed(2);
     }
@@ -140,8 +140,6 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
   const handleVitalChange = (key: keyof PatientVitals, value: string) => {
     setFormData(prev => {
         const newVitals = { ...prev.vitals!, [key]: value };
-        
-        // Auto Calculate
         if (key === 'weight' || key === 'height') {
             const { bmi, bsa } = calculateMetrics(
                 key === 'weight' ? value : newVitals.weight,
@@ -150,12 +148,10 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
             newVitals.bmi = bmi;
             newVitals.bsa = bsa;
         }
-
         return { ...prev, vitals: newVitals };
     });
   };
 
-  // Visual Alert Logic
   const getVitalStatus = (key: string, value: string): 'normal' | 'warning' | 'danger' => {
       if (!value) return 'normal';
       const num = parseFloat(value);
@@ -181,7 +177,6 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                if (num > 200) return 'danger';
                break;
           case 'bloodPressure':
-               // Simple check for systolic if format is '120/80' or just '120'
                const sys = parseInt(value.split('/')[0]);
                if (sys > 140) return 'warning';
                if (sys > 180) return 'danger';
@@ -196,16 +191,16 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (formData.name && formData.chiefComplaint) {
       setSaving(true);
       try {
         const record: PatientRecord = {
           ...(formData as PatientData),
-          id: crypto.randomUUID(), // New visit ID
+          id: crypto.randomUUID(),
           visitDate: Date.now(),
-          status: 'waiting', // Standard workflow start
+          status: 'waiting',
           imageBlob: formData.image ? formData.image : undefined,
           labReportBlob: formData.labReport ? formData.labReport : undefined
         };
@@ -221,12 +216,12 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
     }
   };
 
-  const DictationButton = ({ field }: { field: 'chiefComplaint' | 'history' }) => (
+  const DictationButton = ({ field, className = "" }: { field: 'chiefComplaint' | 'history', className?: string }) => (
     <button
       type="button"
       onClick={() => recordingField === field ? stopRecording() : startRecording(field)}
       disabled={isProcessingAudio || (recordingField !== null && recordingField !== field)}
-      className={`absolute top-2 left-2 p-2 rounded-full transition-all ${
+      className={`${className} transition-all ${
         recordingField === field 
           ? 'bg-red-500 text-white animate-pulse shadow-lg ring-4 ring-red-200' 
           : 'bg-gray-100 text-gray-500 hover:bg-blue-100 hover:text-blue-600'
@@ -244,14 +239,201 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
   );
 
   return (
-    <div className="space-y-6 animate-fade-in pb-20">
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+    <div className="animate-fade-in pb-20">
+      
+      {/* ======================= MOBILE VIEW (WIZARD) ======================= */}
+      <div className="lg:hidden flex flex-col min-h-[85vh]">
+         {/* Wizard Header */}
+         <div className="bg-white p-4 sticky top-0 z-30 shadow-sm border-b border-gray-100">
+            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+               <User className="text-blue-600" size={20} />
+               {formData.name ? formData.name : 'مشاوره جدید'}
+            </h2>
+            {/* Progress Bar */}
+            <div className="flex items-center gap-2">
+               {[1, 2, 3].map(step => (
+                  <div key={step} className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden relative">
+                     <div className={`absolute inset-0 bg-blue-600 transition-all duration-500 ${step <= mobileStep ? 'w-full' : 'w-0'}`}></div>
+                  </div>
+               ))}
+            </div>
+            <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-bold">
+               <span className={mobileStep >= 1 ? 'text-blue-600' : ''}>شناسایی</span>
+               <span className={mobileStep >= 2 ? 'text-blue-600' : ''}>علائم حیاتی</span>
+               <span className={mobileStep >= 3 ? 'text-blue-600' : ''}>شرح حال</span>
+            </div>
+         </div>
+
+         {/* Wizard Content */}
+         <div className="flex-1 p-4 overflow-y-auto">
+            
+            {/* STEP 1: IDENTITY */}
+            {mobileStep === 1 && (
+               <div className="space-y-6 animate-slide-up">
+                  <div className="bg-blue-50 p-6 rounded-3xl text-center">
+                     <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 shadow-md">
+                        <Search size={32} />
+                     </div>
+                     <h3 className="text-xl font-bold text-blue-900 mb-2">پرونده کیست؟</h3>
+                     <p className="text-blue-600/70 text-sm">نام بیمار را جستجو کنید تا اطلاعات فراخوانی شود</p>
+                  </div>
+
+                  <div className="relative">
+                     <input 
+                       autoFocus
+                       className="w-full p-4 bg-white border-2 border-gray-100 rounded-2xl outline-none focus:border-blue-500 text-lg shadow-sm"
+                       placeholder="نام بیمار..."
+                       value={searchTerm}
+                       onChange={e => setSearchTerm(e.target.value)}
+                     />
+                     {searchTerm && filteredPatients.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 z-20 overflow-hidden">
+                           {filteredPatients.map(p => (
+                              <button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full p-4 text-right border-b border-gray-50 flex justify-between items-center active:bg-blue-50">
+                                 <span className="font-bold">{p.name}</span>
+                                 <ChevronLeft size={16} className="text-gray-300" />
+                              </button>
+                           ))}
+                        </div>
+                     )}
+                  </div>
+
+                  {isPatientSelected && (
+                     <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 animate-fade-in">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${formData.gender === 'male' ? 'bg-blue-500' : 'bg-pink-500'}`}>
+                           <User />
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-lg text-gray-800">{formData.name}</h4>
+                           <p className="text-sm text-gray-500">{formData.age} ساله • {formData.gender === 'male' ? 'آقا' : 'خانم'}</p>
+                        </div>
+                        <Check className="mr-auto text-green-500" />
+                     </div>
+                  )}
+               </div>
+            )}
+
+            {/* STEP 2: VITALS */}
+            {mobileStep === 2 && (
+               <div className="space-y-4 animate-slide-up">
+                  <div className="grid grid-cols-2 gap-3">
+                     {[
+                        { l: 'فشار خون', k: 'bloodPressure', ph: '120/80' },
+                        { l: 'ضربان قلب', k: 'heartRate', ph: '75' },
+                        { l: 'دما', k: 'temperature', ph: '37' },
+                        { l: 'اکسیژن', k: 'spO2', ph: '98' },
+                        { l: 'قند خون', k: 'bloodSugar', ph: '100' },
+                        { l: 'تعداد تنفس', k: 'respiratoryRate', ph: '16' },
+                        { l: 'وزن (kg)', k: 'weight', ph: '70' },
+                        { l: 'قد (cm)', k: 'height', ph: '175' },
+                     ].map((item) => (
+                        <div key={item.k} className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all">
+                           <label className="text-xs font-bold text-gray-400 block mb-1">{item.l}</label>
+                           <input 
+                              type="text"
+                              className="w-full text-lg font-bold text-gray-800 outline-none text-center placeholder-gray-200"
+                              placeholder={item.ph}
+                              value={formData.vitals?.[item.k as keyof PatientVitals] || ''}
+                              onChange={e => handleVitalChange(item.k as keyof PatientVitals, e.target.value)}
+                           />
+                        </div>
+                     ))}
+                  </div>
+                  
+                  {formData.vitals?.bmi && (
+                     <div className="bg-blue-50 p-3 rounded-xl text-center text-sm text-blue-800 font-bold">
+                        BMI: {formData.vitals.bmi}
+                     </div>
+                  )}
+               </div>
+            )}
+
+            {/* STEP 3: HISTORY & DOCS */}
+            {mobileStep === 3 && (
+               <div className="space-y-6 animate-slide-up">
+                  <div className="space-y-2">
+                     <label className="text-sm font-bold text-gray-700 flex items-center justify-between">
+                        شکایت اصلی
+                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">اجباری</span>
+                     </label>
+                     <div className="relative">
+                        <textarea 
+                           className="w-full p-4 bg-white border border-gray-200 rounded-2xl h-32 resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                           placeholder="علت مراجعه..."
+                           value={formData.chiefComplaint || ''}
+                           onChange={e => setFormData(prev => ({ ...prev, chiefComplaint: e.target.value }))}
+                        />
+                        <DictationButton field="chiefComplaint" className="absolute bottom-3 left-3 p-2 rounded-xl" />
+                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                     <label className="text-sm font-bold text-gray-700">سوابق پزشکی</label>
+                     <div className="relative">
+                        <textarea 
+                           className="w-full p-4 bg-white border border-gray-200 rounded-2xl h-24 resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                           placeholder="بیماری‌های زمینه‌ای..."
+                           value={formData.history || ''}
+                           onChange={e => setFormData(prev => ({ ...prev, history: e.target.value }))}
+                        />
+                        <DictationButton field="history" className="absolute bottom-3 left-3 p-2 rounded-xl" />
+                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                     <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center relative overflow-hidden h-24">
+                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, 'image')} />
+                        <Camera className="text-gray-400 mb-1" />
+                        <span className="text-xs font-bold text-gray-500">{formData.image ? 'عکس انتخاب شد' : 'عکس چهره'}</span>
+                     </div>
+                     <div className="bg-white border-2 border-dashed border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center relative overflow-hidden h-24">
+                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, 'labReport')} />
+                        <Upload className="text-gray-400 mb-1" />
+                        <span className="text-xs font-bold text-gray-500">{formData.labReport ? 'فایل انتخاب شد' : 'آپلود آزمایش'}</span>
+                     </div>
+                  </div>
+               </div>
+            )}
+         </div>
+
+         {/* Mobile Bottom Action Bar */}
+         <div className="sticky bottom-0 bg-white p-4 border-t border-gray-100 flex gap-3 z-30 pb-safe">
+            {mobileStep > 1 && (
+               <button onClick={() => setMobileStep(s => (s - 1) as any)} className="p-4 bg-gray-100 rounded-2xl text-gray-600">
+                  <ArrowLeft size={24} />
+               </button>
+            )}
+            
+            {mobileStep < 3 ? (
+               <button 
+                  onClick={() => setMobileStep(s => (s + 1) as any)} 
+                  disabled={mobileStep === 1 && !isPatientSelected}
+                  className="flex-1 bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-blue-200 flex items-center justify-center gap-2 disabled:opacity-50"
+               >
+                  مرحله بعد
+                  <ChevronLeft size={20} />
+               </button>
+            ) : (
+               <button 
+                  onClick={() => handleSubmit()} 
+                  disabled={saving || !formData.chiefComplaint}
+                  className="flex-1 bg-emerald-600 text-white font-bold py-4 rounded-2xl shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 disabled:opacity-50"
+               >
+                  {saving ? <Loader2 className="animate-spin" /> : <Stethoscope />}
+                  شروع تشخیص
+               </button>
+            )}
+         </div>
+      </div>
+
+      {/* ======================= DESKTOP VIEW (CLASSIC) ======================= */}
+      <div className="hidden lg:block bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
         
         {/* Header & Search */}
         <div className="mb-8">
            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-2">
              <span className="w-2 h-8 bg-blue-600 rounded-full"></span>
-             ویزیت هوشمند (Smart Visit)
+             مشاوره هوشمند (Smart Consult)
            </h2>
            
            <div className="relative z-20">
@@ -260,7 +442,7 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                  <Search className="text-blue-500" />
                  <input 
                    className="w-full bg-transparent outline-none text-gray-700 placeholder-gray-400"
-                   placeholder="جستجوی نام بیمار جهت شروع ویزیت..."
+                   placeholder="جستجوی نام بیمار جهت شروع مشاوره..."
                    value={searchTerm}
                    onChange={e => { setSearchTerm(e.target.value); setShowDropdown(true); }}
                    onFocus={() => setShowDropdown(true)}
@@ -351,7 +533,7 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
                     <Activity size={20} />
-                    علائم حیاتی (ویزیت جدید)
+                    علائم حیاتی (مشاوره جدید)
                     </h3>
                     <div className="flex gap-4 text-xs font-mono text-gray-500">
                     {formData.vitals?.bmi && <span>BMI: <strong>{formData.vitals.bmi}</strong></span>}
@@ -409,7 +591,7 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                     value={formData.chiefComplaint || ''}
                     onChange={e => setFormData(prev => ({ ...prev, chiefComplaint: e.target.value }))}
                     />
-                    <DictationButton field="chiefComplaint" />
+                    <DictationButton field="chiefComplaint" className="absolute top-2 left-2 p-2 rounded-full" />
                 </div>
                 </div>
                 <div className="space-y-2">
@@ -421,7 +603,7 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                     value={formData.history || ''}
                     onChange={e => setFormData(prev => ({ ...prev, history: e.target.value }))}
                     />
-                    <DictationButton field="history" />
+                    <DictationButton field="history" className="absolute top-2 left-2 p-2 rounded-full" />
                 </div>
                 </div>
             </div>
@@ -458,7 +640,7 @@ const PatientIntake: React.FC<PatientIntakeProps> = ({ onSubmit }) => {
                {saving ? (
                  <>
                    <Loader2 className="animate-spin" />
-                   <span>در حال ثبت ویزیت...</span>
+                   <span>در حال ثبت اطلاعات...</span>
                  </>
                ) : (
                  <>
