@@ -1,8 +1,8 @@
 
-import { GoogleGenAI, Modality } from "@google/genai";
-import { DoctorDiagnosis, DualDiagnosis, LabAnalysis, PatientData, RadiologyAnalysis, PhysicalExamAnalysis, PatientRecord, CardiologyAnalysis, NeurologyAnalysis, PsychologyAnalysis, OphthalmologyAnalysis, PediatricsAnalysis, OrthopedicsAnalysis, DentistryAnalysis, GynecologyAnalysis, PulmonologyAnalysis, GastroenterologyAnalysis, UrologyAnalysis, HematologyAnalysis, EmergencyAnalysis, GeneticsAnalysis, PrescriptionItem, PatientVitals } from "../types";
+import type { GenerateContentResponse, Chat, Part, Content } from "@google/genai";
+import { DoctorDiagnosis, DualDiagnosis, LabAnalysis, PatientData, RadiologyAnalysis, PhysicalExamAnalysis, PatientRecord, CardiologyAnalysis, NeurologyAnalysis, PsychologyAnalysis, OphthalmologyAnalysis, PediatricsAnalysis, OrthopedicsAnalysis, DentistryAnalysis, GynecologyAnalysis, PulmonologyAnalysis, GastroenterologyAnalysis, UrologyAnalysis, HematologyAnalysis, EmergencyAnalysis, GeneticsAnalysis, PrescriptionItem, PatientVitals, ChatMessage } from "../types";
 
-// --- API Key Statistics Interface ---
+// --- Client-Side Key Stats Interface (Mocked for Proxy Mode) ---
 export interface KeyStats {
   key: string;
   maskedKey: string;
@@ -12,153 +12,98 @@ export interface KeyStats {
   status: 'active' | 'cooldown';
 }
 
-// --- API Key Rotation Manager ---
+// --- Key Manager (Proxy Stub) ---
+// This class is kept to prevent breaking Layout.tsx which expects keyManager.getStatistics()
 class KeyManager {
-  private keys: string[] = [];
-  private stats: Map<string, KeyStats> = new Map();
-  private index = 0;
-
-  constructor() {
-    this.discoverKeys();
-  }
-
-  private discoverKeys() {
-    const foundKeys: string[] = [];
-
-    // 1. Safe Process Env Access (Defensive)
-    try {
-      // @ts-ignore
-      if (typeof process !== 'undefined' && process && process.env) {
-        // @ts-ignore
-        const key = process.env.API_KEY;
-        if (key && typeof key === 'string') foundKeys.push(key);
-        
-        // @ts-ignore
-        Object.keys(process.env).forEach(k => {
-            if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
-                // @ts-ignore
-                const val = process.env[k];
-                if (val && typeof val === 'string') foundKeys.push(val);
-            }
-        });
-      }
-    } catch (e) { /* ignore */ }
-
-    // 2. Safe Vite Env Access
-    try {
-      // @ts-ignore
-      if (typeof import.meta !== 'undefined' && import.meta.env) {
-        // @ts-ignore
-        const meta = import.meta.env;
-        for (const k in meta) {
-          if (k.startsWith('VITE_GOOGLE_GENAI_TOKEN')) {
-            const val = meta[k];
-            if (typeof val === 'string' && val.length > 5) {
-              foundKeys.push(val);
-            }
-          }
-        }
-      }
-    } catch (e) { /* ignore */ }
-
-    // Dedup and Initialize Stats
-    this.keys = Array.from(new Set(foundKeys));
-    this.keys.forEach(k => {
-      if (!this.stats.has(k)) {
-        this.stats.set(k, {
-          key: k,
-          maskedKey: `${k.substring(0, 4)}...${k.substring(k.length - 4)}`,
-          usageCount: 0,
-          errorCount: 0,
-          lastUsed: 0,
-          status: 'active'
-        });
-      }
-    });
-    
-    console.log(`[AI System] Multi-Key System Active. Loaded ${this.keys.length} API Keys.`);
-  }
-
-  get currentKey() {
-    if (this.keys.length === 0) return undefined;
-    return this.keys[this.index];
-  }
-
-  public getClient() {
-    const key = this.currentKey;
-    if (!key || typeof key !== 'string') {
-        console.error("Invalid API Key found:", key);
-        throw new Error("No valid API Keys configured.");
-    }
-    
-    const stat = this.stats.get(key);
-    if (stat) {
-      stat.usageCount++;
-      stat.lastUsed = Date.now();
-      stat.status = 'active'; 
-    }
-
-    return new GoogleGenAI({ apiKey: key });
-  }
-
-  public rotate() {
-    const currentKey = this.currentKey;
-    if (currentKey) {
-       const stat = this.stats.get(currentKey);
-       if (stat) {
-         stat.errorCount++;
-         stat.status = 'cooldown';
-       }
-    }
-
-    if (this.keys.length > 1) {
-      this.index = (this.index + 1) % this.keys.length;
-      console.warn(`[AI System] ⚠️ Quota hit or error. Rotating to Key Index: ${this.index + 1}/${this.keys.length}`);
-    }
+  public getStatistics(): KeyStats[] {
+    return [{
+      key: 'proxy',
+      maskedKey: 'SERVER-SIDE-PROXY',
+      usageCount: 999,
+      errorCount: 0,
+      lastUsed: Date.now(),
+      status: 'active'
+    }];
   }
   
   public hasKeys() {
-    return this.keys.length > 0;
-  }
-
-  public getStatistics(): KeyStats[] {
-    return Array.from(this.stats.values());
+    return true; // Always true as keys are on server
   }
 }
 
 export const keyManager = new KeyManager();
 
-async function withRetry<T>(fn: (ai: GoogleGenAI) => Promise<T>): Promise<T> {
-  let attempts = 0;
-  const maxAttempts = Math.min(Math.max(2, keyManager['keys'].length), 5); 
+// --- PROXY CALLER FUNCTION ---
+// This replaces the direct ai.models.generateContent call
+async function callProxy(payload: { model: string; contents: any[]; config?: any }): Promise<any> {
+  try {
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  while (attempts < maxAttempts) {
-    try {
-      const ai = keyManager.getClient();
-      return await fn(ai);
-    } catch (error: any) {
-      attempts++;
-      console.warn(`[AI Error] Attempt ${attempts} failed:`, error);
-      
-      const isRetryable = error.message?.includes('429') || 
-                          error.message?.includes('503') || 
-                          error.status === 429 || 
-                          error.status === 503 ||
-                          error.message?.includes('Quota') ||
-                          error.message?.includes('Resource has been exhausted') ||
-                          error.message?.includes('fetch failed') ||
-                          error.name === 'TypeError'; // Catch Illegal constructor issues potentially
-
-      if (isRetryable && attempts < maxAttempts) {
-        keyManager.rotate();
-        await new Promise(r => setTimeout(r, 1000 * attempts)); // Increased backoff
-        continue;
-      }
-      
-      throw error;
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Proxy Error (${response.status}): ${errText}`);
     }
+
+    const data = await response.json();
+    
+    // Add a helper getter for .text to mimic SDK behavior
+    // The raw JSON won't have the getter method, so we inject the property if missing
+    if (data && data.candidates && !data.text) {
+        const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || "";
+        data.text = text;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error("AI Proxy Call Failed:", error);
+    throw error;
   }
-  throw new Error("Maximum retry attempts reached. Service unavailable.");
+}
+
+// --- Helper: Chat Session Shim ---
+// Since we can't use the SDK's chat object on client without a key, we mock it via proxy
+class ProxyChatSession {
+  private history: Content[] = [];
+  private model: string;
+  private config: any;
+
+  constructor(model: string, config: any, systemInstruction?: string) {
+     this.model = model;
+     this.config = config || {};
+     // If system instruction exists, we should conceptually treat it as context, 
+     // but the API supports it in config.
+     if (systemInstruction) {
+        this.config.systemInstruction = systemInstruction;
+     }
+  }
+
+  async sendMessage(params: { message: string }): Promise<{ text: string }> {
+     // 1. Add user message
+     const userContent: Content = { role: 'user', parts: [{ text: params.message }] };
+     this.history.push(userContent);
+
+     // 2. Call proxy with full history
+     const response = await callProxy({
+        model: this.model,
+        contents: this.history, // Send full history
+        config: this.config
+     });
+
+     // 3. Extract text
+     const modelText = response.text || "";
+
+     // 4. Add model response to history
+     const modelContent: Content = { role: 'model', parts: [{ text: modelText }] };
+     this.history.push(modelContent);
+
+     return { text: modelText };
+  }
 }
 
 const fileToGenerativePart = async (file: File | Blob) => {
@@ -209,7 +154,6 @@ const safeParseJSON = (text: string) => {
 // --- CORE ANALYSIS FUNCTIONS ---
 
 export const analyzePatient = async (data: PatientData | PatientRecord): Promise<DualDiagnosis> => {
-  return withRetry(async (ai) => {
     const parts: any[] = [];
     const promptText = `
       Patient Information:
@@ -273,7 +217,7 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
       } catch(e) { console.warn("Failed to process lab report", e); }
     }
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash", 
       contents: [{ parts }], 
       config: {}
@@ -281,18 +225,14 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
 
     const parsedData = safeParseJSON(response.text || "{}");
 
-    // CRITICAL VALIDATION: Ensure we have the required structure
-    // If we don't validate here, the UI will crash when trying to access .modern or .traditional
     if (!parsedData || !parsedData.modern || !parsedData.traditional) {
         throw new Error("Invalid or incomplete AI response structure.");
     }
 
     return parsedData as DualDiagnosis;
-  });
 };
 
 export const generateConsensus = async (modern: DoctorDiagnosis, traditional: DoctorDiagnosis): Promise<string> => {
-  return withRetry(async (ai) => {
     const prompt = `
       Act as a Medical Board Director. Review these two opinions:
       Modern: ${JSON.stringify(modern)}
@@ -305,25 +245,23 @@ export const generateConsensus = async (modern: DoctorDiagnosis, traditional: Do
       Output structured markdown in Persian.
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [{ text: prompt }] }],
       config: {}
     });
 
     return response.text || "خطا در جمع‌بندی";
-  });
 };
 
 export const generateAudioSummary = async (text: string): Promise<string> => {
-  return withRetry(async (ai) => {
     const prompt = `Read this medical summary in a professional, reassuring Persian (Farsi) voice: ${text.substring(0, 1000)}`;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: prompt }] }],
       config: {
-        responseModalities: [Modality.AUDIO],
+        responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: { voiceName: 'Kore' },
@@ -334,11 +272,9 @@ export const generateAudioSummary = async (text: string): Promise<string> => {
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     return base64Audio || "";
-  });
 };
 
 export const createMedicalChat = (patientData: PatientData, diagnosis: DualDiagnosis, consensus: string) => {
-  const ai = keyManager.getClient();
   const systemContext = `
     You are the "Smart Physician Medical Council". 
     You have analyzed patient: ${patientData.name}.
@@ -352,16 +288,12 @@ export const createMedicalChat = (patientData: PatientData, diagnosis: DualDiagn
     Maintain a professional, collaborative tone.
   `;
 
-  return ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: systemContext
-    }
-  });
+  // Return local proxy chat instance
+  // @ts-ignore - Mimics Chat interface partially
+  return new ProxyChatSession("gemini-2.5-flash", {}, systemContext);
 };
 
 export const analyzeCulture = async (image: File, type: string, notes: string): Promise<LabAnalysis> => {
-  return withRetry(async (ai) => {
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
       You are an expert Microbiologist. Analyze this image of a ${type} culture.
@@ -378,18 +310,16 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
       }
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [imgPart, { text: prompt }] }],
       config: {}
     });
 
     return safeParseJSON(response.text || "{}") as LabAnalysis;
-  });
 };
 
 export const analyzeRadiology = async (image: File, modality: string, region: string): Promise<RadiologyAnalysis> => {
-  return withRetry(async (ai) => {
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
       You are an expert Radiologist. Analyze this ${modality} of ${region}.
@@ -406,18 +336,16 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
       }
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [imgPart, { text: prompt }] }],
       config: {}
     });
 
     return safeParseJSON(response.text || "{}") as RadiologyAnalysis;
-  });
 };
 
 export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongue' | 'face'): Promise<PhysicalExamAnalysis> => {
-  return withRetry(async (ai) => {
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
       Analyze this physical exam image. Type: ${examType}. 
@@ -434,18 +362,16 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
       }
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [imgPart, { text: prompt }] }],
       config: {}
     });
 
     return safeParseJSON(response.text || "{}") as PhysicalExamAnalysis;
-  });
 };
 
 export const digitizePrescription = async (image: File): Promise<{ items: PrescriptionItem[], diagnosis?: string, vitals?: PatientVitals }> => {
-  return withRetry(async (ai) => {
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
       You are an expert Senior Pharmacist (Dr. Darusaz).
@@ -475,20 +401,18 @@ export const digitizePrescription = async (image: File): Promise<{ items: Prescr
       }
     `;
 
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [imgPart, { text: prompt }] }],
       config: {}
     });
 
     return safeParseJSON(response.text || "{}");
-  });
 };
 
 export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
-  return withRetry(async (ai) => {
     const base64Audio = await blobToBase64(audio);
-    const response = await ai.models.generateContent({
+    const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [
           { inlineData: { mimeType: "audio/mp3", data: base64Audio } },
@@ -498,28 +422,25 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
       config: {}
     });
     return response.text || "";
-  });
 };
 
 export const generateTimelineAnalysis = async (current: any, history: any[]): Promise<string> => {
-    return withRetry(async (ai) => {
-        const prompt = `
-          Analyze the patient's history to identify trends.
-          Current Visit: ${JSON.stringify(current)}
-          Past History: ${JSON.stringify(history)}
-          Output a brief Persian report.
-        `;
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [{ text: prompt }] }],
-            config: {}
-        });
-        return response.text || "عدم توانایی در تحلیل روند.";
+    const prompt = `
+      Analyze the patient's history to identify trends.
+      Current Visit: ${JSON.stringify(current)}
+      Past History: ${JSON.stringify(history)}
+      Output a brief Persian report.
+    `;
+    const response = await callProxy({
+        model: "gemini-2.5-flash",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {}
     });
+    return response.text || "عدم توانایی در تحلیل روند.";
 };
 
 // Generic placeholder wrapper
-const wrapPlaceholder = async (fn: Function) => withRetry(async (ai) => { return {}; });
+const wrapPlaceholder = async (fn: Function) => Promise.resolve({});
 
 export const analyzeECG = async (image: File, context: string) => wrapPlaceholder(() => {});
 export const analyzeHeartSound = async (audio: Blob) => wrapPlaceholder(() => {});
