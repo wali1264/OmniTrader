@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid } from 'lucide-react';
+import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid, LogOut } from 'lucide-react';
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
+import { supabase } from '../services/supabase';
 
 interface LayoutProps {
   currentRoute: AppRoute;
@@ -61,6 +62,33 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setDeferredPrompt(null);
   };
 
+  // --- CLEAN EXIT LOGIC ---
+  const handleSignOut = async () => {
+    try {
+      // 1. Identify the user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // 2. Clear the session from Database ("Empty the chair")
+      if (user) {
+        await supabase.from('profiles').update({ 
+          active_session_id: null,
+          last_login_device: null 
+        }).eq('id', user.id);
+      }
+
+      // 3. Clear local storage
+      localStorage.removeItem('tabib_session_id');
+
+      // 4. Perform Supabase SignOut
+      await supabase.auth.signOut();
+      
+    } catch (error) {
+      console.error("Error during sign out:", error);
+      // Force sign out even if DB update fails (fallback)
+      await supabase.auth.signOut();
+    }
+  };
+
   // Trigger Logic
   const handleLogoClick = () => {
     const now = Date.now();
@@ -78,7 +106,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   };
 
   const handleAdminLogin = () => {
-    if (adminPassword === 'admin') { // Hardcoded for demo/frontend-only protection
+    if (adminPassword === 'Alliwali@1264') { // Secure password applied
       setShowAdminLogin(false);
       setShowAdminDashboard(true);
       setKeyStats(keyManager.getStatistics()); // Load stats
@@ -183,7 +211,8 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           <NavItem route={AppRoute.SETTINGS} icon={SettingsIcon} label="تنظیمات" />
         </nav>
 
-        <div className="p-6 bg-blue-50 border-t border-blue-100">
+        {/* Profile & Logout Section (Desktop) */}
+        <div className="p-6 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <img src="https://picsum.photos/100/100" className="w-12 h-12 rounded-full border-2 border-blue-200" alt="Dr Profile" />
             <div>
@@ -191,6 +220,13 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
               <p className="text-xs text-blue-600">مدیر سیستم</p>
             </div>
           </div>
+          <button 
+            onClick={handleSignOut} 
+            title="خروج امن از سیستم"
+            className="p-2 bg-white text-red-500 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </aside>
 
@@ -212,6 +248,12 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                    <Download size={18} />
                 </button>
              )}
+             
+             {/* Logout Button Mobile */}
+             <button onClick={handleSignOut} className="bg-red-50 text-red-500 p-2 rounded-full hover:bg-red-100 transition-colors" title="خروج">
+                <LogOut size={18} />
+             </button>
+
              <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
                 <img src="https://picsum.photos/100/100" className="w-full h-full object-cover" alt="Profile" />
              </div>

@@ -1,29 +1,30 @@
 
-const CACHE_NAME = 'tabib-ai-cache-v1';
+const CACHE_NAME = 'tabib-ai-cache-v3';
 const urlsToCache = [
   '/',
   '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 // Install SW
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(urlsToCache);
-      })
-  );
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(urlsToCache);
+    })
+  );
 });
 
 // Activate SW and clean old caches
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
+          if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
         })
@@ -33,42 +34,61 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch Strategy: Stale-While-Revalidate for static, Network First for others
+// Fetch Strategy
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests like Google APIs from caching logic to avoid opaque response issues
-  if (!event.request.url.startsWith(self.location.origin)) {
-     return;
+  const url = new URL(event.request.url);
+  
+  // Skip cross-origin (like Supabase or Google AI) to avoid CORS issues in cache
+  if (url.origin !== self.location.origin) {
+    // External CDNs that we want to cache (like Tailwind or Fonts)
+    if (url.hostname.includes('tailwindcss.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('googleapis.com')) {
+      // Use standard caching for these
+    } else {
+      return;
+    }
   }
 
+  // Strategy for HTML (Navigation) -> Network First
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        })
+        .catch(() => {
+          // If offline, try to return index.html for ANY navigation request (SPA support)
+          return caches.match('/') || caches.match('/index.html');
+        })
+    );
+    return;
+  }
+
+  // Strategy for Assets (JS, CSS, Images) -> Cache First, then Network & Update Cache
+  // This handles the "index-BwYzBOJd.js" issue
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      return fetch(event.request).then((networkResponse) => {
+        // Only cache valid responses
+        if (!networkResponse || networkResponse.status !== 200) {
+          return networkResponse;
         }
 
-        // Clone the request
-        const fetchRequest = event.request.clone();
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          cache.put(event.request, responseToCache);
+        });
 
-        return fetch(fetchRequest).then(
-          (response) => {
-            // Check if we received a valid response
-            if(!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-
-            // Clone the response
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          }
-        );
-      })
+        return networkResponse;
+      }).catch(() => {
+        // Fail silently for non-critical assets
+      });
+    })
   );
 });
