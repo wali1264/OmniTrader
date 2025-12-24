@@ -1,25 +1,22 @@
 
-export interface PlantCareInfo {
-  plantName: string;
-  scientificName: string;
-  description: string;
-  watering: string;
-  sunlight: string;
-  soil: string;
-  difficulty: 'Easy' | 'Moderate' | 'Challenging';
-  pests: string[];
-  tips: string[];
-}
-
-export interface ChatMessage {
+export interface ServiceItem {
   id: string;
-  role: 'user' | 'model';
-  text: string;
-  timestamp: Date;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  type: 'labor' | 'part' | 'inspection';
 }
 
-export enum AppView {
-  IDENTIFY = 'IDENTIFY',
-  CHAT = 'CHAT',
-  HISTORY = 'HISTORY'
+export interface Quote {
+  id: string;
+  customerName: string;
+  items: ServiceItem[];
+  discount: number;
+  splitCount: number;
+  taxRate: number;
+}
+
+export interface AIResponse {
+  advice: string;
+  recommendations: string[];
 }

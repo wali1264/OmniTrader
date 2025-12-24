@@ -1,82 +1,128 @@
 
 import React, { useState } from 'react';
-import { IdentifyView } from './components/IdentifyView';
-import { GardenBot } from './components/GardenBot';
-import { AppView } from './types';
+import { Quote } from './types';
+import { CalculatorSection } from './components/CalculatorSection';
+import { ServiceForm } from './components/ServiceForm';
+import { AIAdvisor } from './components/AIAdvisor';
+import { Settings, LogOut, LayoutDashboard, History, Menu, X as CloseIcon } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<AppView>(AppView.IDENTIFY);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [quote, setQuote] = useState<Quote>({
+    id: '1',
+    customerName: 'Guest Customer',
+    items: [],
+    discount: 0,
+    splitCount: 1,
+    taxRate: 8.5
+  });
+
+  const handleItemsChange = (newItems: Quote['items']) => {
+    setQuote({ ...quote, items: newItems });
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 selection:bg-emerald-100">
-      {/* Decorative background blobs */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-100 rounded-full blur-[120px] opacity-60"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-teal-50 rounded-full blur-[100px] opacity-60"></div>
-      </div>
-
-      <nav className="sticky top-4 z-50 px-4 md:px-8">
-        <div className="max-w-4xl mx-auto glass rounded-full px-4 py-2 flex items-center justify-between shadow-lg border border-white/40">
-          <div className="flex items-center gap-2 pl-4">
-            <span className="text-2xl">🌱</span>
-            <span className="font-serif text-xl font-bold bg-gradient-to-r from-emerald-800 to-emerald-600 bg-clip-text text-transparent">
-              GardenPro
-            </span>
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+      {/* Sidebar Navigation */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-lg italic shadow-lg shadow-blue-500/20">AM</div>
+            <h1 className="font-black text-xl tracking-tight">AutoMath<span className="text-blue-500">PRO</span></h1>
           </div>
-
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={() => setCurrentView(AppView.IDENTIFY)}
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                currentView === AppView.IDENTIFY 
-                  ? 'bg-emerald-600 text-white shadow-md' 
-                  : 'text-slate-600 hover:bg-white/50'
-              }`}
-            >
-              Identify
-            </button>
-            <button 
-              onClick={() => setCurrentView(AppView.CHAT)}
-              className={`px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                currentView === AppView.CHAT 
-                  ? 'bg-emerald-600 text-white shadow-md' 
-                  : 'text-slate-600 hover:bg-white/50'
-              }`}
-            >
-              Ask Botanist
-            </button>
-          </div>
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden p-2 hover:bg-slate-800 rounded-lg">
+            <CloseIcon className="w-5 h-5" />
+          </button>
         </div>
-      </nav>
 
-      <main className="max-w-6xl mx-auto px-6 pt-16 pb-24">
-        <header className="text-center mb-16 animate-in fade-in slide-in-from-top-4 duration-700">
-          <h1 className="text-5xl md:text-7xl font-serif text-slate-900 mb-6 leading-tight">
-            {currentView === AppView.IDENTIFY ? (
-              <>Grow your garden with <span className="text-emerald-600">confidence.</span></>
-            ) : (
-              <>Your personal botanical <span className="text-emerald-600">expert.</span></>
-            )}
-          </h1>
-          <p className="text-slate-500 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-            {currentView === AppView.IDENTIFY 
-              ? "Discover the secrets of your plants. Identify species and get tailored care guides instantly."
-              : "Ask questions about soil, pruning, pests, or landscaping. Get expert advice powered by Gemini."}
-          </p>
+        <nav className="p-4 space-y-2 mt-4">
+          <button className="w-full flex items-center gap-3 px-4 py-3 bg-blue-600 rounded-xl font-semibold transition-all">
+            <LayoutDashboard className="w-5 h-5" /> Dashboard
+          </button>
+          <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl font-semibold transition-all">
+            <History className="w-5 h-5" /> Recent Quotes
+          </button>
+          <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl font-semibold transition-all">
+            <Settings className="w-5 h-5" /> Garage Settings
+          </button>
+        </nav>
+
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
+           <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-red-400 transition-colors">
+            <LogOut className="w-5 h-5" /> Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="flex-1 min-w-0 overflow-y-auto max-h-screen">
+        {/* Top Header */}
+        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="hidden sm:block">
+              <h2 className="text-sm font-bold text-slate-800">Quote Draft #9402</h2>
+              <p className="text-xs text-slate-500">Last updated: {new Date().toLocaleTimeString()}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex items-center gap-3 px-4 py-2 bg-slate-100 rounded-full border border-slate-200">
+               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+               <span className="text-xs font-bold text-slate-600 uppercase tracking-widest">Active Session</span>
+            </div>
+            <img src="https://picsum.photos/40/40?grayscale" className="w-10 h-10 rounded-full border-2 border-white shadow-sm" alt="User" />
+          </div>
         </header>
 
-        <div className="relative">
-          {currentView === AppView.IDENTIFY ? <IdentifyView /> : <GardenBot />}
+        {/* Dashboard Grid */}
+        <div className="p-4 sm:p-8 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20">
+          
+          {/* Left Column: Form & Items */}
+          <div className="lg:col-span-8 space-y-8">
+            <section>
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                   <h2 className="text-3xl font-black text-slate-900 tracking-tight">Create Service Estimate</h2>
+                   <p className="text-slate-500">Add labor, parts, and apply math logic for accurate billing.</p>
+                </div>
+                <div className="flex gap-2">
+                   <button className="bg-white border border-slate-200 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50">Draft Save</button>
+                   <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-800">Preview Invoice</button>
+                </div>
+              </div>
+              <ServiceForm items={quote.items} onItemsChange={handleItemsChange} />
+            </section>
+
+            <section>
+              <AIAdvisor />
+            </section>
+          </div>
+
+          {/* Right Column: Calculator Engine */}
+          <div className="lg:col-span-4 space-y-8">
+            <div className="sticky top-24">
+              <CalculatorSection quote={quote} onUpdateQuote={setQuote} />
+              
+              {/* Quick Summary Cards */}
+              <div className="mt-8 grid grid-cols-2 gap-4">
+                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Items</p>
+                    <p className="text-2xl font-black text-slate-900">{quote.items.length}</p>
+                 </div>
+                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Labor Hrs</p>
+                    <p className="text-2xl font-black text-slate-900">
+                      {quote.items.filter(i => i.type === 'labor').reduce((acc, curr) => acc + curr.quantity, 0)}
+                    </p>
+                 </div>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
-
-      <footer className="py-12 px-6 border-t border-slate-200 mt-20 text-center">
-        <div className="flex items-center justify-center gap-2 mb-4">
-          <span className="text-xl">🌿</span>
-          <span className="font-serif font-bold text-slate-800">GardenPro AI</span>
-        </div>
-        <p className="text-slate-400 text-sm">Powered by Gemini-3-Pro-Preview • Precision Plant Intelligence</p>
-      </footer>
     </div>
   );
 };

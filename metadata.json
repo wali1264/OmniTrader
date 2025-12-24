@@ -1,7 +1,5 @@
 {
-  "name": "GardenPro AI",
-  "description": "An advanced gardening assistant that identifies plants from photos and provides tailored care advice using Gemini AI.",
-  "requestFramePermissions": [
-    "camera"
-  ]
+  "name": "AutoMath Pro - Intelligent Car Service Estimator",
+  "description": "A sophisticated car service management application featuring a specialized quote engine with the four core mathematical operations (addition, subtraction, multiplication, and division) and an AI-powered automotive advisor.",
+  "requestFramePermissions": []
 }
