@@ -1,5 +1,8 @@
 {
-  "name": "AutoMath Pro - Intelligent Car Service Estimator",
-  "description": "A sophisticated car service management application featuring a specialized quote engine with the four core mathematical operations (addition, subtraction, multiplication, and division) and an AI-powered automotive advisor.",
-  "requestFramePermissions": []
+  "name": "سیستم مدیریت صرافی جاوید (Sarrafi Pro)",
+  "description": "یک پلتفرم جامع برای مدیریت صرافی شامل حسابداری مشتریان، روزنامهچه، حساب‌های بانکی ایرانی، مدیریت سود و ضرر و سیستم تائید مدیریت.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }
