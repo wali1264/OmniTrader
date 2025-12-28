@@ -1,5 +1,5 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   Download, Upload, ShieldCheck, Database, History, 
   AlertTriangle, CheckCircle2, FileJson, Users, 
@@ -25,7 +25,8 @@ const Settings: React.FC<SettingsProps> = ({
   users, setUsers, customers, setCustomers, bankAccounts, setBankAccounts, 
   transactions, setTransactions, currentUser, setCurrentUser
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'backup' | 'users' | 'security'>('security');
+  const isAdmin = currentUser?.role === 'admin';
+  const [activeSubTab, setActiveSubTab] = useState<'backup' | 'users' | 'security'>(isAdmin ? 'users' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -35,11 +36,19 @@ const Settings: React.FC<SettingsProps> = ({
 
   const [newUser, setNewUser] = useState({ fullName: '', username: '', password: '', role: 'operator' as UserRole });
 
+  // Ensure operator stays on security tab and doesn't see admin content
+  useEffect(() => {
+    if (!isAdmin && activeSubTab !== 'security') {
+      setActiveSubTab('security');
+    }
+  }, [isAdmin, activeSubTab]);
+
   const togglePasswordVisibility = (userId: string) => {
     setVisiblePasswords(prev => ({ ...prev, [userId]: !prev[userId] }));
   };
 
   const handleExport = () => {
+    if (!isAdmin) return;
     try {
       const backupData = {
         version: "2.6",
@@ -57,8 +66,9 @@ const Settings: React.FC<SettingsProps> = ({
     } catch (err) { setStatus({ type: 'error', message: 'خطا در خروجی فایل پشتیبان.' }); }
   };
 
-  const handleImportClick = () => { fileInputRef.current?.click(); };
+  const handleImportClick = () => { if (isAdmin) fileInputRef.current?.click(); };
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isAdmin) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -79,6 +89,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleAddUser = (e: React.FormEvent) => {
+    if (!isAdmin) return;
     e.preventDefault();
     const user: User = { id: Math.random().toString(36).substr(2, 9), ...newUser };
     setUsers(prev => [...prev, user]);
@@ -114,10 +125,30 @@ const Settings: React.FC<SettingsProps> = ({
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
+      {/* Tab Navigation - Conditionally Rendered */}
       <div className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 max-w-lg mx-auto">
-        <button onClick={() => setActiveSubTab('security')} className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>امنیت و رمز عبور</button>
-        <button onClick={() => setActiveSubTab('users')} className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>مدیریت کاربران</button>
-        <button onClick={() => setActiveSubTab('backup')} className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}>نسخه پشتیبان</button>
+        <button 
+          onClick={() => setActiveSubTab('security')} 
+          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+          امنیت و رمز عبور
+        </button>
+        {isAdmin && (
+          <>
+            <button 
+              onClick={() => setActiveSubTab('users')} 
+              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              مدیریت کاربران
+            </button>
+            <button 
+              onClick={() => setActiveSubTab('backup')} 
+              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              نسخه پشتیبان
+            </button>
+          </>
+        )}
       </div>
 
       {status.type !== 'none' && (
@@ -127,6 +158,7 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
+      {/* Security View - Always accessible by current user */}
       {activeSubTab === 'security' && (
         <div className="flex justify-center animate-in zoom-in duration-300">
            <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100 w-full max-w-xl">
@@ -175,7 +207,8 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {activeSubTab === 'backup' && (
+      {/* Backup View - Admin Only */}
+      {isAdmin && activeSubTab === 'backup' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in zoom-in duration-300">
           <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100 text-center flex flex-col items-center">
             <div className="p-6 bg-blue-50 text-blue-600 rounded-[2.5rem] mb-8">
@@ -197,7 +230,8 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {activeSubTab === 'users' && (
+      {/* Users View - Admin Only */}
+      {isAdmin && activeSubTab === 'users' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 animate-in zoom-in duration-300">
           <div className="lg:col-span-8 bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
             <h3 className="text-2xl font-black mb-10 flex items-center gap-3">

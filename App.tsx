@@ -19,7 +19,8 @@ import {
   Lock,
   User as UserIcon,
   ShieldCheck,
-  KeyRound
+  KeyRound,
+  Code2
 } from 'lucide-react';
 import { Customer, BankAccount, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate } from './types';
 import Dashboard from './components/Dashboard';
@@ -179,6 +180,10 @@ const App: React.FC = () => {
           <div className="mt-12 text-center">
              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-1">Jaweed Exchange Pro v2.6</div>
              <p className="text-[9px] text-slate-600">طراحی شده برای امنیت و دقت بالا در معاملات</p>
+             <div className="mt-6 pt-6 border-t border-white/5">
+                <p className="text-[9px] text-blue-400/60 font-black">Meraj Salehi Production and Programming Company</p>
+                <p className="text-[8px] text-slate-600 mt-1">شرکت تولید و برنامه‌نویسی معراج صالحی</p>
+             </div>
           </div>
         </div>
       </div>
@@ -189,7 +194,7 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden font-['Vazirmatn']" dir="rtl">
       <aside className="w-72 bg-slate-950 text-white flex flex-col shrink-0 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-b from-blue-600/5 to-transparent pointer-events-none"></div>
-        <div className="p-8 relative z-10">
+        <div className="p-8 relative z-10 flex flex-col h-full">
           <div className="flex items-center gap-4 mb-10">
             <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 p-3 rounded-2xl shadow-lg shadow-blue-500/20">
               <Wallet size={28} />
@@ -200,7 +205,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <nav className="space-y-1.5">
+          <nav className="space-y-1.5 flex-1">
             <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="میز کار (داشبورد)" />
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">عملیات جاری</div>
             <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={20} />} label="دفتر مشتریان" />
@@ -211,9 +216,18 @@ const App: React.FC = () => {
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">تنظیمات</div>
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={20} />} label="مدیریت و امنیت" />
           </nav>
+
+          <div className="mt-auto py-6 px-4 border-t border-white/5 text-center">
+            <div className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
+              <Code2 size={16} className="text-blue-500" />
+              <p className="text-[8px] font-black uppercase tracking-tighter leading-tight text-slate-400">Developed By</p>
+              <p className="text-[9px] font-black text-blue-400 leading-none">Meraj Salehi Production</p>
+              <p className="text-[8px] text-slate-600 font-bold">شرکت برنامه‌نویسی معراج صالحی</p>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-auto p-8 border-t border-slate-900 bg-slate-950/50 relative z-10">
+        <div className="p-8 border-t border-slate-900 bg-slate-950/50 relative z-10">
           <div className="flex items-center gap-3 mb-6 p-3 bg-white/5 rounded-2xl border border-white/5">
              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black">{currentUser?.fullName.charAt(0)}</div>
              <div className="overflow-hidden">
@@ -252,13 +266,22 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="p-10 max-w-[1600px] mx-auto">
-          {activeTab === 'dashboard' && <Dashboard stats={stats} bankAccounts={bankAccounts} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} />}
-          {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} globalRates={globalRates} />}
-          {activeTab === 'banks' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
-          {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
-          {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} />}
-          {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} />}
+        <div className="p-10 max-w-[1600px] mx-auto min-h-[calc(100vh-140px)] flex flex-col">
+          <div className="flex-1">
+            {activeTab === 'dashboard' && <Dashboard stats={stats} bankAccounts={bankAccounts} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} />}
+            {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} globalRates={globalRates} />}
+            {activeTab === 'banks' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
+            {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
+            {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} />}
+            {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} />}
+          </div>
+
+          {/* Persistent Footer Branding */}
+          <footer className="mt-16 pt-8 border-t border-slate-200 flex flex-col items-center justify-center text-center opacity-30 hover:opacity-100 transition-opacity">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">طراحی و توسعه توسط</p>
+            <p className="text-xs font-black text-blue-600">شرکت تولید و برنامه‌نویسی معراج صالحی</p>
+            <p className="text-[9px] font-mono text-slate-400 mt-1">Meraj Salehi Production and Programming Company © {new Date().getFullYear()}</p>
+          </footer>
         </div>
       </main>
     </div>

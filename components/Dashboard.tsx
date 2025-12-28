@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { TrendingUp, Wallet, ArrowUpRight, ArrowDownLeft, Landmark, DollarSign, Coins, Building2, Plus, Sparkles, Loader2, RefreshCw } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { TrendingUp, Wallet, ArrowUpRight, ArrowDownLeft, Landmark, DollarSign, Coins, Building2, Plus, Sparkles, Loader2, RefreshCw, ArrowRight, ArrowLeft } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Transaction, BankAccount, GlobalRate, SUPPORTED_CURRENCIES } from '../types';
+import { Transaction, BankAccount, GlobalRate, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus } from '../types';
 import { GoogleGenAI } from "@google/genai";
 
 interface DashboardProps {
@@ -55,6 +55,31 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
     }
   };
 
+  const dailyStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const approvedToday = transactions.filter(t => 
+      t.status === TransactionStatus.APPROVED && 
+      new Date(t.timestamp).setHours(0, 0, 0, 0) === today.getTime()
+    );
+
+    const incoming: Record<string, number> = {};
+    const outgoing: Record<string, number> = {};
+
+    SUPPORTED_CURRENCIES.forEach(curr => {
+      incoming[curr.code] = approvedToday
+        .filter(t => t.type === TransactionType.RESID && t.currency === curr.code)
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      outgoing[curr.code] = approvedToday
+        .filter(t => t.type === TransactionType.BOARD && t.currency === curr.code)
+        .reduce((sum, t) => sum + t.amount, 0);
+    });
+
+    return { incoming, outgoing };
+  }, [transactions]);
+
   const chartData = [
     { name: 'شنبه', resid: 4000, board: 2400 },
     { name: 'یکشنبه', resid: 3000, board: 1398 },
@@ -68,9 +93,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
   return (
     <div className="space-y-10 animate-in fade-in duration-700">
       
-      {/* 1. Market Rates & Cash Box Section */}
+      {/* 1. Market Rates & Overall Cash Stats */}
       <section className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Market Rate Widget */}
         <div className="lg:col-span-1 bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
              <RefreshCw size={120} />
@@ -99,33 +123,64 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
           </div>
         </div>
 
-        {/* Cash Box Items */}
-        <StatCard 
-          title="موجودی افغانی (AFN)" 
-          value={(stats.cashBox['AFN'] || 0).toLocaleString()} 
-          unit="؋" 
-          icon={<Coins className="text-blue-500" />} 
-        />
-        <StatCard 
-          title="موجودی دالر (USD)" 
-          value={(stats.cashBox['USD'] || 0).toLocaleString()} 
-          unit="$" 
-          icon={<DollarSign className="text-emerald-500" />} 
-        />
-        <StatCard 
-          title="سود خالص معاملات" 
-          value={stats.totalProfit.toLocaleString()} 
-          unit="AFN" 
-          icon={<TrendingUp className="text-indigo-500" />} 
-          trend="+15%"
-          highlight
-        />
+        <StatCard title="موجودی افغانی (AFN)" value={(stats.cashBox['AFN'] || 0).toLocaleString()} unit="؋" icon={<Coins className="text-blue-500" />} />
+        <StatCard title="موجودی دالر (USD)" value={(stats.cashBox['USD'] || 0).toLocaleString()} unit="$" icon={<DollarSign className="text-emerald-500" />} />
+        <StatCard title="سود خالص کل" value={stats.totalProfit.toLocaleString()} unit="AFN" icon={<TrendingUp className="text-indigo-500" />} trend="+15%" highlight />
       </section>
 
-      {/* 2. Charts & Banks Section */}
+      {/* 2. Daily Detailed Movements (Incoming & Outgoing by Currency) */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Incoming Section */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-xl font-black text-slate-900">مجموع ورودی امروز (رسید)</h3>
+              <p className="text-xs text-slate-400 mt-1 font-medium italic">تفکیک شده بر اساس واحد پول</p>
+            </div>
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+              <ArrowDownLeft size={24} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {SUPPORTED_CURRENCIES.map(curr => (
+              <div key={curr.code} className="p-4 rounded-2xl bg-emerald-50/30 border border-emerald-100/50">
+                <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">{curr.label}</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-black text-slate-800">{dailyStats.incoming[curr.code].toLocaleString()}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{curr.code}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Outgoing Section */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-xl font-black text-slate-900">مجموع خروجی امروز (برد)</h3>
+              <p className="text-xs text-slate-400 mt-1 font-medium italic">تفکیک شده بر اساس واحد پول</p>
+            </div>
+            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+              <ArrowUpRight size={24} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {SUPPORTED_CURRENCIES.map(curr => (
+              <div key={curr.code} className="p-4 rounded-2xl bg-rose-50/30 border border-rose-100/50">
+                <p className="text-[9px] font-black text-rose-600 uppercase mb-1">{curr.label}</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-lg font-black text-slate-800">{dailyStats.outgoing[curr.code].toLocaleString()}</span>
+                  <span className="text-[10px] font-bold text-slate-400">{curr.code}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 3. Charts & Banks Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        
-        {/* Charts */}
         <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <div className="flex justify-between items-center mb-10">
             <div>
@@ -149,9 +204,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12, fontWeight: 'bold', fill: '#94a3b8'}} />
                 <YAxis hide />
-                <Tooltip 
-                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                />
+                <Tooltip contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
                 <Area type="monotone" dataKey="resid" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorResid)" />
                 <Area type="monotone" dataKey="board" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorBoard)" />
               </AreaChart>
@@ -159,12 +212,11 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
           </div>
         </div>
 
-        {/* Bank Section */}
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <div className="flex justify-between items-center mb-8">
             <div>
               <h3 className="text-xl font-black text-slate-900">حساب‌های بانکی</h3>
-              <p className="text-xs text-slate-400 mt-1 font-medium">موجودی ارزهای دیجیتال و حواله</p>
+              <p className="text-xs text-slate-400 mt-1 font-medium">موجودی حواله و پوز</p>
             </div>
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
               <Building2 size={24} />
@@ -187,9 +239,6 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
                 </div>
               ))
             )}
-            <button className="w-full py-4 text-xs font-black text-slate-400 hover:text-blue-600 bg-slate-50/50 hover:bg-blue-50 border-2 border-dashed border-slate-200 rounded-3xl hover:border-blue-200 transition-all flex items-center justify-center gap-2">
-              <Plus size={16} /> مدیریت حساب‌های بانکی
-            </button>
           </div>
         </div>
       </div>
@@ -218,7 +267,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, unit, icon, trend, hi
         </span>
       )}
     </div>
-    <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${highlight ? 'text-slate-400' : 'text-slate-400'}`}>{title}</p>
+    <p className="text-[10px] font-black uppercase tracking-widest mb-2 text-slate-400">{title}</p>
     <div className="flex items-baseline gap-2">
       <h4 className="text-3xl font-black">{value}</h4>
       <span className={`text-xs font-black uppercase tracking-tight ${highlight ? 'text-blue-400' : 'text-slate-400'}`}>{unit}</span>

@@ -5,7 +5,7 @@ import {
   ArrowDownLeft, ArrowUpRight, Download, Filter, 
   Target, Info, FileSpreadsheet
 } from 'lucide-react';
-import { Transaction, TransactionType, Customer } from '../types';
+import { Transaction, TransactionType, Customer, SUPPORTED_CURRENCIES, TransactionStatus } from '../types';
 
 interface JournalProps {
   transactions: Transaction[];
@@ -45,14 +45,21 @@ const Journal: React.FC<JournalProps> = ({ transactions, customers }) => {
       .sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, selectedDate, search, customers]);
 
-  const dailyStats = useMemo(() => {
-    const resid = dailyTransactions
-      .filter(t => t.type === TransactionType.RESID && t.status === 'approved')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const board = dailyTransactions
-      .filter(t => t.type === TransactionType.BOARD && t.status === 'approved')
-      .reduce((sum, t) => sum + t.amount, 0);
-    return { resid, board, balance: resid - board };
+  const dailyStatsByCurrency = useMemo(() => {
+    const incoming: Record<string, number> = {};
+    const outgoing: Record<string, number> = {};
+
+    SUPPORTED_CURRENCIES.forEach(curr => {
+      incoming[curr.code] = dailyTransactions
+        .filter(t => t.type === TransactionType.RESID && t.currency === curr.code && t.status === TransactionStatus.APPROVED)
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      outgoing[curr.code] = dailyTransactions
+        .filter(t => t.type === TransactionType.BOARD && t.currency === curr.code && t.status === TransactionStatus.APPROVED)
+        .reduce((sum, t) => sum + t.amount, 0);
+    });
+
+    return { incoming, outgoing };
   }, [dailyTransactions]);
 
   const persianDate = selectedDate.toLocaleDateString('fa-IR', { 
@@ -114,34 +121,53 @@ const Journal: React.FC<JournalProps> = ({ transactions, customers }) => {
         </div>
       </div>
 
-      {/* 2. Daily Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">مجموع ورودی (رسید)</p>
-            <h4 className="text-2xl font-black text-emerald-700">{dailyStats.resid.toLocaleString()} <span className="text-xs font-bold opacity-60">AFN</span></h4>
+      {/* 2. Daily Summary Sections by Currency */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Incoming (Resid) Detailed Breakdown */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h4 className="text-xl font-black text-emerald-700">مجموع ورودی امروز (رسید)</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">تفکیک بر اساس واحد ارز</p>
+            </div>
+            <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl">
+              <ArrowDownLeft size={24} />
+            </div>
           </div>
-          <div className="p-3 bg-white/50 text-emerald-600 rounded-2xl shadow-sm"><ArrowDownLeft size={24} /></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {SUPPORTED_CURRENCIES.map(curr => (
+              <div key={curr.code} className="p-4 rounded-2xl bg-emerald-50/30 border border-emerald-100/50 flex flex-col">
+                <span className="text-[9px] font-black text-emerald-600 uppercase mb-1">{curr.label}</span>
+                <span className="text-lg font-black text-slate-800">
+                  {dailyStatsByCurrency.incoming[curr.code].toLocaleString()}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 mt-0.5">{curr.code}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <div className="bg-rose-50 border border-rose-100 p-6 rounded-[2rem] flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-rose-600 uppercase mb-1">مجموع خروجی (برد)</p>
-            <h4 className="text-2xl font-black text-rose-700">{dailyStats.board.toLocaleString()} <span className="text-xs font-bold opacity-60">AFN</span></h4>
+        {/* Outgoing (Board) Detailed Breakdown */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h4 className="text-xl font-black text-rose-700">مجموع خروجی امروز (برد)</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">تفکیک بر اساس واحد ارز</p>
+            </div>
+            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl">
+              <ArrowUpRight size={24} />
+            </div>
           </div>
-          <div className="p-3 bg-white/50 text-rose-600 rounded-2xl shadow-sm"><ArrowUpRight size={24} /></div>
-        </div>
-
-        <div className="bg-slate-900 p-6 rounded-[2rem] flex items-center justify-between shadow-xl shadow-slate-200">
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase mb-1">تراز نهایی روز</p>
-            <h4 className={`text-2xl font-black ${dailyStats.balance >= 0 ? 'text-white' : 'text-rose-400'}`}>
-              {Math.abs(dailyStats.balance).toLocaleString()} 
-              <span className="text-xs font-bold opacity-60 mr-1">AFN</span>
-            </h4>
-          </div>
-          <div className={`p-3 rounded-2xl ${dailyStats.balance >= 0 ? 'bg-white/10 text-white' : 'bg-rose-500/20 text-rose-400'}`}>
-            <FileSpreadsheet size={24} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {SUPPORTED_CURRENCIES.map(curr => (
+              <div key={curr.code} className="p-4 rounded-2xl bg-rose-50/30 border border-rose-100/50 flex flex-col">
+                <span className="text-[9px] font-black text-rose-600 uppercase mb-1">{curr.label}</span>
+                <span className="text-lg font-black text-slate-800">
+                  {dailyStatsByCurrency.outgoing[curr.code].toLocaleString()}
+                </span>
+                <span className="text-[9px] font-bold text-slate-400 mt-0.5">{curr.code}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
