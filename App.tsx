@@ -20,7 +20,8 @@ import {
   User as UserIcon,
   ShieldCheck,
   KeyRound,
-  Code2
+  Code2,
+  PieChart
 } from 'lucide-react';
 import { Customer, BankAccount, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate } from './types';
 import Dashboard from './components/Dashboard';
@@ -29,9 +30,10 @@ import BankManager from './components/BankManager';
 import Journal from './components/Journal';
 import Approvals from './components/Approvals';
 import Settings from './components/Settings';
+import AssetCalculator from './components/AssetCalculator';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'banks' | 'journal' | 'approvals' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'banks' | 'journal' | 'approvals' | 'assets' | 'settings'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
@@ -205,7 +207,7 @@ const App: React.FC = () => {
             </div>
           </div>
           
-          <nav className="space-y-1.5 flex-1">
+          <nav className="space-y-1.5 flex-1 overflow-y-auto">
             <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="میز کار (داشبورد)" />
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">عملیات جاری</div>
             <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={20} />} label="دفتر مشتریان" />
@@ -213,6 +215,7 @@ const App: React.FC = () => {
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">حسابداری و نظارت</div>
             <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={20} />} label="روزنامهچه کل" />
             <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={20} />} label="تائیدات نهایی" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
+            <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={20} />} label="محاسبه دارائی‌ها" />
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">تنظیمات</div>
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={20} />} label="مدیریت و امنیت" />
           </nav>
@@ -251,6 +254,7 @@ const App: React.FC = () => {
               {activeTab === 'banks' && "مدیریت حساب‌های بانکی"}
               {activeTab === 'journal' && "گزارش روزانه معاملات"}
               {activeTab === 'approvals' && "بررسی و تائید اسناد"}
+              {activeTab === 'assets' && "محاسبه و ارزیابی دارائی‌ها"}
               {activeTab === 'settings' && "تنظیمات و امنیت"}
             </h2>
           </div>
@@ -273,6 +277,7 @@ const App: React.FC = () => {
             {activeTab === 'banks' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
             {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
             {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} />}
+            {activeTab === 'assets' && <AssetCalculator customers={customers} bankAccounts={bankAccounts} stats={stats} globalRates={globalRates} />}
             {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} />}
           </div>
 
