@@ -21,7 +21,9 @@ import {
   ShieldCheck,
   KeyRound,
   Code2,
-  PieChart
+  PieChart,
+  UserPlus,
+  HelpCircle
 } from 'lucide-react';
 import { Customer, BankAccount, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate } from './types';
 import Dashboard from './components/Dashboard';
@@ -31,9 +33,10 @@ import Journal from './components/Journal';
 import Approvals from './components/Approvals';
 import Settings from './components/Settings';
 import AssetCalculator from './components/AssetCalculator';
+import AnonymousDeposits from './components/AnonymousDeposits';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'banks' | 'journal' | 'approvals' | 'assets' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'banks' | 'journal' | 'approvals' | 'assets' | 'anonymous' | 'settings'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
@@ -92,20 +95,6 @@ const App: React.FC = () => {
     localStorage.setItem('s_transactions', JSON.stringify(transactions));
     localStorage.setItem('s_rates', JSON.stringify(globalRates));
   }, [users, customers, bankAccounts, transactions, globalRates]);
-
-  const handleInitialSetup = (e: React.FormEvent) => {
-    e.preventDefault();
-    const admin: User = {
-      id: 'admin-' + Date.now(),
-      fullName: setupForm.fullName,
-      username: setupForm.username,
-      password: setupForm.password,
-      role: 'admin'
-    };
-    setUsers(prev => [...prev, admin]);
-    setCurrentUser(admin);
-    setIsLoggedIn(true);
-  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,9 +201,10 @@ const App: React.FC = () => {
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">عملیات جاری</div>
             <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={20} />} label="دفتر مشتریان" />
             <NavItem active={activeTab === 'banks'} onClick={() => setActiveTab('banks')} icon={<Landmark size={20} />} label="بانک‌های ایران" />
+            <NavItem active={activeTab === 'anonymous'} onClick={() => setActiveTab('anonymous')} icon={<HelpCircle size={20} />} label="واریزی‌های ناشناس" badge={transactions.filter(t => !t.customerId && t.type === TransactionType.RESID && t.status !== TransactionStatus.REJECTED).length}/>
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">حسابداری و نظارت</div>
             <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={20} />} label="روزنامهچه کل" />
-            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={20} />} label="تائیدات نهایی" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
+            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={20} />} label="تائیدات نهایی" badge={transactions.filter(t => t.status === TransactionStatus.PENDING && t.customerId).length}/>
             <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={20} />} label="محاسبه دارائی‌ها" />
             <div className="pt-4 pb-2 px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">تنظیمات</div>
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={20} />} label="مدیریت و امنیت" />
@@ -252,6 +242,7 @@ const App: React.FC = () => {
               {activeTab === 'dashboard' && "نمای کلی نقدینگی"}
               {activeTab === 'customers' && "حسابداری مشتریان"}
               {activeTab === 'banks' && "مدیریت حساب‌های بانکی"}
+              {activeTab === 'anonymous' && "واریزی‌های ناشناس (حساب معلق)"}
               {activeTab === 'journal' && "گزارش روزانه معاملات"}
               {activeTab === 'approvals' && "بررسی و تائید اسناد"}
               {activeTab === 'assets' && "محاسبه و ارزیابی دارائی‌ها"}
@@ -275,6 +266,7 @@ const App: React.FC = () => {
             {activeTab === 'dashboard' && <Dashboard stats={stats} bankAccounts={bankAccounts} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} />}
             {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} globalRates={globalRates} />}
             {activeTab === 'banks' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
+            {activeTab === 'anonymous' && <AnonymousDeposits transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} customers={customers} />}
             {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
             {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} />}
             {activeTab === 'assets' && <AssetCalculator customers={customers} bankAccounts={bankAccounts} stats={stats} globalRates={globalRates} />}
