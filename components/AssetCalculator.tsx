@@ -18,7 +18,8 @@ interface AssetCalculatorProps {
 }
 
 const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, bankAccounts, stats, globalRates }) => {
-  const currentUsdRate = globalRates.find(r => r.pair === 'USD/AFN')?.rate || 70.5;
+  // Fix: Property names to match GlobalRate definition in types.ts (currencyCode/rateToAfn)
+  const currentUsdRate = globalRates.find(r => r.currencyCode === 'USD')?.rateToAfn || 70.5;
 
   const assetDetails = useMemo(() => {
     const liquidByCurrency: Record<string, number> = {};

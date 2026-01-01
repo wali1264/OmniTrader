@@ -20,6 +20,7 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions, globalRates, setGlobalRates }) => {
   const [isFetchingRates, setIsFetchingRates] = useState(false);
 
+  // Fix: Property names to match GlobalRate definition in types.ts (currencyCode/rateToAfn)
   const fetchLatestRates = async () => {
     setIsFetchingRates(true);
     try {
@@ -38,11 +39,11 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
       if (!isNaN(numericRate)) {
         setGlobalRates(prev => {
           const updated = [...prev];
-          const idx = updated.findIndex(r => r.pair === 'USD/AFN');
+          const idx = updated.findIndex(r => r.currencyCode === 'USD');
           if (idx !== -1) {
-            updated[idx] = { ...updated[idx], rate: numericRate, lastUpdated: Date.now(), source: 'AI/Google Search' };
+            updated[idx] = { ...updated[idx], rateToAfn: numericRate, lastUpdated: Date.now(), source: 'AI/Google Search' };
           } else {
-            updated.push({ pair: 'USD/AFN', rate: numericRate, lastUpdated: Date.now(), source: 'AI/Google Search' });
+            updated.push({ currencyCode: 'USD', rateToAfn: numericRate, lastUpdated: Date.now(), source: 'AI/Google Search' });
           }
           return updated;
         });
@@ -107,7 +108,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
               </div>
               <div className="flex items-baseline gap-2">
                 <h4 className="text-4xl font-black">
-                  {globalRates.find(r => r.pair === 'USD/AFN')?.rate || '70.5'}
+                  {/* Fix: Use currencyCode and rateToAfn from GlobalRate type */}
+                  {globalRates.find(r => r.currencyCode === 'USD')?.rateToAfn || '70.5'}
                 </h4>
                 <span className="text-sm font-bold opacity-70">؋</span>
               </div>
@@ -146,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
               <div key={curr.code} className="p-4 rounded-2xl bg-emerald-50/30 border border-emerald-100/50">
                 <p className="text-[9px] font-black text-emerald-600 uppercase mb-1">{curr.label}</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-black text-slate-800">{dailyStats.incoming[curr.code].toLocaleString()}</span>
+                  <span className="text-lg font-black text-slate-800">{dailyStats.incoming[curr.code]?.toLocaleString() || '0'}</span>
                   <span className="text-[10px] font-bold text-slate-400">{curr.code}</span>
                 </div>
               </div>
@@ -170,7 +172,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, bankAccounts, transactions
               <div key={curr.code} className="p-4 rounded-2xl bg-rose-50/30 border border-rose-100/50">
                 <p className="text-[9px] font-black text-rose-600 uppercase mb-1">{curr.label}</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-lg font-black text-slate-800">{dailyStats.outgoing[curr.code].toLocaleString()}</span>
+                  <span className="text-lg font-black text-slate-800">{dailyStats.outgoing[curr.code]?.toLocaleString() || '0'}</span>
                   <span className="text-[10px] font-bold text-slate-400">{curr.code}</span>
                 </div>
               </div>

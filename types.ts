@@ -1,7 +1,8 @@
 
 export enum TransactionType {
-  BOARD = 'برد', // Withdrawal/Outgoing (Customer took money)
-  RESID = 'رسید' // Deposit/Incoming (Customer paid money)
+  BOARD = 'برد', 
+  RESID = 'رسید', 
+  EXCHANGE = 'تبادل' 
 }
 
 export enum TransactionStatus {
@@ -34,7 +35,6 @@ export interface Customer {
   phones: string[];
   status: 'active' | 'inactive';
   notes: string;
-  // مانده حساب به تفکیک واحد پول
   balances: {
     [currencyCode: string]: number;
   };
@@ -52,8 +52,8 @@ export interface Transaction {
   id: string;
   customerId?: string;
   type: TransactionType;
-  amount: number;
-  currency: string;
+  amount: number; 
+  currency: string; 
   trackingId?: string;
   cardLastFour?: string;
   senderPhoneLastFour?: string;
@@ -62,17 +62,17 @@ export interface Transaction {
   status: TransactionStatus;
   bankAccountId?: string;
   sourceAccountId?: string;
-  // فیلدهای مربوط به تبدیل خودکار
-  exchangeRate?: number;
-  convertedAmount?: number;
-  targetCurrency?: string;
+  exchangeRate?: number; // Rate of source currency TO AFN
+  targetRate?: number;   // Rate of target currency TO AFN
+  convertedAmount?: number; 
+  targetCurrency?: string;  
   profit?: number;
   attachments?: Attachment[];
 }
 
 export interface GlobalRate {
-  pair: string; // e.g., "USD/AFN"
-  rate: number;
+  currencyCode: string; // e.g., "USD"
+  rateToAfn: number;    // e.g., 72.5
   lastUpdated: number;
   source: string;
 }

@@ -4,7 +4,7 @@ import {
   Download, Upload, ShieldCheck, Database, History, 
   AlertTriangle, CheckCircle2, FileJson, Users, 
   Lock, Key, UserPlus, Trash2, UserCheck, ShieldAlert,
-  Eye, EyeOff, Fingerprint, KeyRound, Save
+  Eye, EyeOff, Fingerprint, KeyRound, Save, Building
 } from 'lucide-react';
 import { Customer, BankAccount, Transaction, User, UserRole } from '../types';
 
@@ -19,24 +19,28 @@ interface SettingsProps {
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
+  shopName: string;
+  setShopName: (name: string) => void;
 }
 
 const Settings: React.FC<SettingsProps> = ({ 
   users, setUsers, customers, setCustomers, bankAccounts, setBankAccounts, 
-  transactions, setTransactions, currentUser, setCurrentUser
+  transactions, setTransactions, currentUser, setCurrentUser,
+  shopName, setShopName
 }) => {
   const isAdmin = currentUser?.role === 'admin';
-  const [activeSubTab, setActiveSubTab] = useState<'backup' | 'users' | 'security'>(isAdmin ? 'users' : 'security');
+  const [activeSubTab, setActiveSubTab] = useState<'backup' | 'users' | 'security' | 'general'>(isAdmin ? 'general' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
   // Password Change State
   const [passForm, setPassForm] = useState({ current: '', new: '', confirm: '' });
-
   const [newUser, setNewUser] = useState({ fullName: '', username: '', password: '', role: 'operator' as UserRole });
+  
+  // Shop Name Edit State
+  const [tempShopName, setTempShopName] = useState(shopName);
 
-  // Ensure operator stays on security tab and doesn't see admin content
   useEffect(() => {
     if (!isAdmin && activeSubTab !== 'security') {
       setActiveSubTab('security');
@@ -53,7 +57,7 @@ const Settings: React.FC<SettingsProps> = ({
       const backupData = {
         version: "2.6",
         timestamp: Date.now(),
-        data: { users, customers, bankAccounts, transactions }
+        data: { users, customers, bankAccounts, transactions, shopName }
       };
       const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -80,6 +84,7 @@ const Settings: React.FC<SettingsProps> = ({
           setCustomers(json.data.customers);
           setBankAccounts(json.data.bankAccounts);
           setTransactions(json.data.transactions);
+          if (json.data.shopName) setShopName(json.data.shopName);
           setStatus({ type: 'success', message: 'تمامی اطلاعات با موفقیت بازیابی شد.' });
           setTimeout(() => setStatus({ type: 'none', message: '' }), 3000);
         }
@@ -123,13 +128,28 @@ const Settings: React.FC<SettingsProps> = ({
     setTimeout(() => setStatus({ type: 'none', message: '' }), 3000);
   };
 
+  const handleSaveShopName = () => {
+    if (!tempShopName.trim()) return;
+    setShopName(tempShopName.trim());
+    setStatus({ type: 'success', message: 'نام صرافی با موفقیت تغییر یافت.' });
+    setTimeout(() => setStatus({ type: 'none', message: '' }), 3000);
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-500 pb-20">
-      {/* Tab Navigation - Conditionally Rendered */}
-      <div className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 max-w-lg mx-auto">
+      {/* Tab Navigation */}
+      <div className="flex bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 max-w-2xl mx-auto">
+        {isAdmin && (
+          <button 
+            onClick={() => setActiveSubTab('general')} 
+            className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-xs transition-all ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            تنظیمات عمومی
+          </button>
+        )}
         <button 
           onClick={() => setActiveSubTab('security')} 
-          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-xs transition-all ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
         >
           امنیت و رمز عبور
         </button>
@@ -137,13 +157,13 @@ const Settings: React.FC<SettingsProps> = ({
           <>
             <button 
               onClick={() => setActiveSubTab('users')} 
-              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-xs transition-all ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
             >
               مدیریت کاربران
             </button>
             <button 
               onClick={() => setActiveSubTab('backup')} 
-              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-sm transition-all ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-[1.5rem] font-black text-xs transition-all ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/20' : 'text-slate-400 hover:text-slate-600'}`}
             >
               نسخه پشتیبان
             </button>
@@ -158,7 +178,37 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {/* Security View - Always accessible by current user */}
+      {/* General Settings - Admin Only */}
+      {isAdmin && activeSubTab === 'general' && (
+        <div className="flex justify-center animate-in zoom-in duration-300">
+          <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100 w-full max-w-xl">
+            <div className="flex flex-col items-center mb-10 text-center">
+              <div className="bg-blue-50 text-blue-600 p-5 rounded-3xl mb-4">
+                <Building size={32} />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900">هویت سیستم</h3>
+              <p className="text-sm text-slate-400 mt-2 font-medium">نام نمایش داده شده در هدر و رسیدهای چاپی صرافی.</p>
+            </div>
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase mr-1">نام صرافی (فروشگاه)</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                  placeholder="مثلاً: صرافی جاوید"
+                  value={tempShopName} 
+                  onChange={e => setTempShopName(e.target.value)}
+                />
+              </div>
+              <button onClick={handleSaveShopName} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all active:scale-95 flex items-center justify-center gap-3">
+                <Save size={20} /> بروزرسانی نام صرافی
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Security View */}
       {activeSubTab === 'security' && (
         <div className="flex justify-center animate-in zoom-in duration-300">
            <div className="bg-white p-12 rounded-[3.5rem] shadow-sm border border-slate-100 w-full max-w-xl">

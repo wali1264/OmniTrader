@@ -1,466 +1,473 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, Plus, UserPlus, ArrowUpRight, ArrowDownLeft, 
-  Phone, Hash, Users, FileText, Calendar, MoreVertical, 
-  ChevronLeft, Info, UserCheck, UserMinus, MessageSquare,
-  Clock, CheckCircle, Coins, Mic, Square, Trash2, Image as ImageIcon,
-  Sparkles, Loader2, Play, Paperclip, Landmark, Wallet, CreditCard,
-  ArrowRightLeft, TrendingUp
+  Users, FileText, ChevronLeft, Calculator, Check, X, Delete, 
+  Repeat, ArrowRightLeft, Info, Wallet, AlertTriangle, ArrowDown, Hash
 } from 'lucide-react';
-import { Customer, Transaction, TransactionType, TransactionStatus, BankAccount, SUPPORTED_CURRENCIES, Attachment, GlobalRate } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
+import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
 interface CustomerManagerProps {
   customers: Customer[];
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   transactions: Transaction[];
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
-  bankAccounts: BankAccount[];
+  bankAccounts: any[];
   globalRates: GlobalRate[];
 }
 
-const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustomers, transactions, setTransactions, bankAccounts, globalRates }) => {
+const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustomers, transactions, setTransactions, globalRates }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTransModal, setShowTransModal] = useState<{show: boolean, type: TransactionType}>({ show: false, type: TransactionType.RESID });
+  const [showExchangeModal, setShowExchangeModal] = useState(false);
   
-  // Audio & Media States
-  const [isRecording, setIsRecording] = useState(false);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  // Calculator States
+  const [calcTarget, setCalcTarget] = useState<'from' | 'to' | null>(null);
+  const [calcExpression, setCalcExpression] = useState('');
 
-  // Form States
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank'>('cash');
-  const [newCustomer, setNewCustomer] = useState({ name: '', phones: '', code: '', notes: '' });
-  
-  // Transaction Form with Conversion Support
-  const [newTrans, setNewTrans] = useState({
+  // Exchange Form State (Base AFN Logic)
+  const [exchangeForm, setExchangeForm] = useState({
+    fromCurrency: 'USD',
+    toCurrency: 'AFN',
     amount: 0,
-    currency: 'AFN',
-    bankId: '',
-    description: '',
-    cardLastFour: '',
-    trackingId: '',
-    autoConvert: false,
-    targetCurrency: 'USD',
-    customRate: 0,
-    profit: 0
+    fromRateToAfn: 0, 
+    toRateToAfn: 1,   
+    profit: 0,
+    description: ''
   });
 
-  const activeRate = useMemo(() => {
-    const pair = `${newTrans.targetCurrency}/${newTrans.currency}`; // e.g. USD/AFN
-    const reversePair = `${newTrans.currency}/${newTrans.targetCurrency}`;
-    const rate = globalRates.find(r => r.pair === pair)?.rate || (1 / (globalRates.find(r => r.pair === reversePair)?.rate || 1));
-    return rate || 70.5;
-  }, [newTrans.currency, newTrans.targetCurrency, globalRates]);
+  const [newTrans, setNewTrans] = useState({ amount: 0, currency: 'AFN', description: '' });
+  const [newCustomer, setNewCustomer] = useState({ name: '', phones: '', code: '' });
 
-  // Handle auto-conversion calculation
-  const conversionResult = useMemo(() => {
-    if (!newTrans.autoConvert || !newTrans.amount) return null;
-    const rate = newTrans.customRate || activeRate;
-    
-    // logic: If AFN -> USD, amount / rate. If USD -> AFN, amount * rate.
-    let converted = 0;
-    if (newTrans.currency === 'AFN' && newTrans.targetCurrency === 'USD') {
-        converted = newTrans.amount / rate;
-    } else if (newTrans.currency === 'USD' && newTrans.targetCurrency === 'AFN') {
-        converted = newTrans.amount * rate;
-    } else {
-        // Fallback or other pairs (IRT, etc) - simple multiplier for demo
-        converted = newTrans.amount * (rate / 10); 
-    }
-    
-    // Profit logic: Automatic profit based on a small spread if customRate isn't used
-    const marketRate = activeRate;
-    const usedRate = newTrans.customRate || activeRate;
-    let autoProfit = 0;
-    
-    if (newTrans.autoConvert) {
-       // Example: Market is 70, we give 71. Profit is (71-70) per USD.
-       const diff = Math.abs(usedRate - marketRate);
-       autoProfit = (newTrans.currency === 'USD' ? newTrans.amount : (newTrans.amount / marketRate)) * diff;
-    }
-
-    return { converted, autoProfit };
-  }, [newTrans.amount, newTrans.currency, newTrans.targetCurrency, newTrans.customRate, activeRate, newTrans.autoConvert]);
-
-  useEffect(() => {
-      if (conversionResult) {
-          setNewTrans(prev => ({ ...prev, profit: Math.round(conversionResult.autoProfit) }));
-      }
-  }, [conversionResult?.autoProfit]);
-
-  const filteredCustomers = useMemo(() => {
-    return customers.filter(c => 
-      c.name.includes(searchTerm) || 
-      c.code.includes(searchTerm)
-    );
-  }, [customers, searchTerm]);
-
-  // Fix: Explicitly type currencyStats useMemo to avoid entries values being 'unknown'
-  const currencyStats = useMemo<Record<string, { totalResid: number, totalBoard: number, balance: number }>>(() => {
-    const stats: Record<string, { totalResid: number, totalBoard: number, balance: number }> = {};
-    if (!selectedCustomer) return stats;
-    const approved = transactions.filter(t => t.customerId === selectedCustomer.id && t.status === TransactionStatus.APPROVED);
-    
-    const activeCurrencies = new Set([...Object.keys(selectedCustomer.balances), ...approved.map(t => t.currency)]);
-    
-    activeCurrencies.forEach(curr => {
-      const currTrans = approved.filter(t => t.currency === curr);
-      const totalResid = currTrans.filter(t => t.type === TransactionType.RESID).reduce((sum, t) => sum + t.amount, 0);
-      const totalBoard = currTrans.filter(t => t.type === TransactionType.BOARD).reduce((sum, t) => sum + t.amount, 0);
-      stats[curr] = {
-        totalResid,
-        totalBoard,
-        balance: totalResid - totalBoard
-      };
+  // 1. Live Balance Engine
+  const customerBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+    if (!selectedCustomer) return balances;
+    const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED && t.customerId === selectedCustomer.id);
+    SUPPORTED_CURRENCIES.forEach(curr => {
+      const initial = selectedCustomer.balances[curr.code] || 0;
+      const incoming = approved.filter(t => (t.type === TransactionType.RESID && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code)).reduce((sum, t) => sum + (t.type === TransactionType.EXCHANGE ? (t.convertedAmount || 0) : t.amount), 0);
+      const outgoing = approved.filter(t => (t.type === TransactionType.BOARD && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.currency === curr.code)).reduce((sum, t) => sum + t.amount, 0);
+      balances[curr.code] = initial + incoming - outgoing;
     });
-    return stats;
+    return balances;
   }, [selectedCustomer, transactions]);
 
-  const handleAddCustomer = () => {
-    const customer: Customer = {
-      id: Math.random().toString(36).substr(2, 9),
-      code: newCustomer.code || (customers.length + 1000).toString(),
-      name: newCustomer.name,
-      phones: newCustomer.phones.split(',').map(p => p.trim()).filter(p => p !== ''),
-      status: 'active',
-      notes: newCustomer.notes,
-      balances: {}
+  const availableSourceBalance = customerBalances[exchangeForm.fromCurrency] || 0;
+
+  // 2. AFN Bridge Calculations
+  const amountInAfn = useMemo(() => exchangeForm.amount * exchangeForm.fromRateToAfn, [exchangeForm.amount, exchangeForm.fromRateToAfn]);
+  const finalTargetAmount = useMemo(() => (exchangeForm.toRateToAfn > 0 ? amountInAfn / exchangeForm.toRateToAfn : 0), [amountInAfn, exchangeForm.toRateToAfn]);
+
+  useEffect(() => {
+    if (showExchangeModal) {
+      const fromRate = globalRates.find(r => r.currencyCode === exchangeForm.fromCurrency)?.rateToAfn || (exchangeForm.fromCurrency === 'AFN' ? 1 : 0);
+      const toRate = globalRates.find(r => r.currencyCode === exchangeForm.toCurrency)?.rateToAfn || (exchangeForm.toCurrency === 'AFN' ? 1 : 0);
+      setExchangeForm(prev => ({ ...prev, fromRateToAfn: fromRate, toRateToAfn: toRate }));
+    }
+  }, [showExchangeModal, exchangeForm.fromCurrency, exchangeForm.toCurrency, globalRates]);
+
+  const handleExchangeInternal = () => {
+    if (!selectedCustomer) return;
+    if (exchangeForm.amount > availableSourceBalance) {
+      alert(`خطا: موجودی کافی نیست! مانده مشتری: ${availableSourceBalance.toLocaleString()} ${exchangeForm.fromCurrency}`);
+      return;
+    }
+    if (exchangeForm.amount <= 0 || exchangeForm.fromRateToAfn <= 0 || exchangeForm.toRateToAfn <= 0) {
+      alert("لطفاً مقادیر و نرخ‌ها را به درستی وارد کنید.");
+      return;
+    }
+
+    const transaction: Transaction = {
+      id: 'EX-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+      customerId: selectedCustomer.id,
+      type: TransactionType.EXCHANGE,
+      amount: Number(exchangeForm.amount),
+      currency: exchangeForm.fromCurrency,
+      targetCurrency: exchangeForm.toCurrency,
+      exchangeRate: exchangeForm.fromRateToAfn,
+      targetRate: exchangeForm.toRateToAfn,
+      convertedAmount: finalTargetAmount,
+      description: exchangeForm.description || `تبادل داخلی: ${exchangeForm.amount} ${exchangeForm.fromCurrency} به ${exchangeForm.toCurrency}`,
+      timestamp: Date.now(),
+      status: TransactionStatus.PENDING,
+      profit: Number(exchangeForm.profit)
     };
-    setCustomers(prev => [...prev, customer]);
-    setShowAddModal(false);
+
+    setTransactions(prev => [...prev, transaction]);
+    setShowExchangeModal(false);
+    setExchangeForm(prev => ({ ...prev, amount: 0, profit: 0, description: '' }));
   };
 
   const handleAddTransaction = () => {
-    if (!selectedCustomer) return;
-
+    if (!selectedCustomer || newTrans.amount <= 0) return;
     const transaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
       customerId: selectedCustomer.id,
       type: showTransModal.type,
       amount: Number(newTrans.amount),
       currency: newTrans.currency,
-      bankAccountId: paymentMethod === 'bank' ? newTrans.bankId : undefined,
-      cardLastFour: paymentMethod === 'bank' ? newTrans.cardLastFour : undefined,
-      trackingId: paymentMethod === 'bank' ? newTrans.trackingId : undefined,
-      description: newTrans.autoConvert 
-        ? `${newTrans.description} (تبدیل خودکار به ${newTrans.targetCurrency} با نرخ ${newTrans.customRate || activeRate})`
-        : newTrans.description,
+      description: newTrans.description,
       timestamp: Date.now(),
-      status: TransactionStatus.PENDING,
-      attachments: attachments,
-      // Conversion Data
-      exchangeRate: newTrans.autoConvert ? (newTrans.customRate || activeRate) : undefined,
-      convertedAmount: conversionResult?.converted,
-      targetCurrency: newTrans.autoConvert ? newTrans.targetCurrency : undefined,
-      profit: newTrans.profit || 0
+      status: TransactionStatus.PENDING
     };
-
     setTransactions(prev => [...prev, transaction]);
-    closeTransModal();
-  };
-
-  const closeTransModal = () => {
     setShowTransModal({ show: false, type: TransactionType.RESID });
-    setNewTrans({ 
-        amount: 0, currency: 'AFN', bankId: '', description: '', cardLastFour: '', trackingId: '',
-        autoConvert: false, targetCurrency: 'USD', customRate: 0, profit: 0
-    });
-    setAttachments([]);
-    setPaymentMethod('cash');
+    setNewTrans({ amount: 0, currency: 'AFN', description: '' });
   };
 
-  const startRecording = async () => {
+  const solveCalc = () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
-      mediaRecorder.ondataavailable = (e) => chunksRef.current.push(e.data);
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setAttachments(prev => [...prev, {
-            id: Math.random().toString(36).substr(2, 9),
-            type: 'audio',
-            data: reader.result as string,
-            mimeType: 'audio/webm'
-          }]);
-        };
-        reader.readAsDataURL(blob);
-      };
-      mediaRecorder.start();
-      setIsRecording(true);
-    } catch (err) { alert("خطا در میکروفون"); }
+      const sanitized = calcExpression.replace(/[^-+*/0-9.]/g, '').replace(/×/g, '*').replace(/÷/g, '/');
+      const result = eval(sanitized);
+      if (!isNaN(result)) {
+        const field = calcTarget === 'from' ? 'fromRateToAfn' : 'toRateToAfn';
+        setExchangeForm(prev => ({ ...prev, [field]: Number(result.toFixed(4)) }));
+        setCalcTarget(null);
+        setCalcExpression('');
+      }
+    } catch (e) { alert("خطا در محاسبه!"); }
   };
 
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
-    setIsRecording(false);
-  };
-
-  const handleSmartAi = async () => {
-    if (!newTrans.description) return;
-    setIsAiProcessing(true);
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze: "${newTrans.description}". Extract JSON: amount, currency, type (RESID/BOARD).`,
-        config: { responseMimeType: "application/json" }
-      });
-      const result = JSON.parse(response.text || '{}');
-      if (result.amount) setNewTrans(prev => ({ ...prev, amount: result.amount }));
-      if (result.currency) setNewTrans(prev => ({ ...prev, currency: result.currency }));
-    } catch (err) { alert("خطا در پردازش هوشمند"); }
-    finally { setIsAiProcessing(false); }
-  };
-
-  const currentCustomerTrans = useMemo(() => {
-    if (!selectedCustomer) return [];
-    return transactions.filter(t => t.customerId === selectedCustomer.id)
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, [selectedCustomer, transactions]);
+  const filteredCustomers = useMemo(() => 
+    customers.filter(c => 
+      c.name.includes(searchTerm) || 
+      c.code.includes(searchTerm)
+    ), [customers, searchTerm]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
-      
-      {/* 1. Sidebar */}
+      {/* Sidebar: Customer List */}
       <div className="lg:col-span-3 space-y-4">
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 sticky top-24">
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 sticky top-24">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-slate-800 flex items-center gap-2"><Users size={18} className="text-blue-600" /> لیست مشتریان</h3>
-            <button onClick={() => setShowAddModal(true)} className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md"><UserPlus size={18} /></button>
+            <h3 className="font-black text-slate-800 flex items-center gap-2"><Users size={20} className="text-blue-600" /> لیست مشتریان</h3>
+            <button onClick={() => { setNewCustomer({name:'', phones:'', code:(customers.length+101).toString()}); setShowAddModal(true); }} className="p-2.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all shadow-lg"><UserPlus size={20} /></button>
           </div>
           <div className="relative mb-6">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input type="text" placeholder="جستجوی نام یا کد..." className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pr-10 pl-4 text-sm outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input type="text" placeholder="جستجوی نام یا کد مشتری..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3.5 pr-12 pl-4 text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          <div className="space-y-2 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
-            {filteredCustomers.map(c => (
-              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-4 rounded-xl text-right transition-all group ${selectedCustomer?.id === c.id ? 'bg-slate-900 text-white shadow-lg' : 'bg-white border border-slate-50 hover:bg-slate-50 text-slate-700'}`}>
-                <div className="flex justify-between items-center">
-                  <div className="flex-1"><p className="font-bold text-sm">{c.name}</p><span className="text-[10px] opacity-60">{c.code}</span></div>
-                  <ChevronLeft size={16} className={`transition-transform ${selectedCustomer?.id === c.id ? 'translate-x-1' : 'opacity-0'}`} />
+          <div className="space-y-2 max-h-[calc(100vh-340px)] overflow-y-auto pr-1">
+            {filteredCustomers.length > 0 ? filteredCustomers.map(c => (
+              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-5 rounded-2xl text-right transition-all group ${selectedCustomer?.id === c.id ? 'bg-slate-950 text-white shadow-xl' : 'bg-white border border-slate-50 hover:bg-slate-50 text-slate-700'}`}>
+                <div className="flex justify-between items-start">
+                   <p className="font-black text-sm">{c.name}</p>
+                   <span className={`text-[9px] font-black px-2 py-0.5 rounded-lg ${selectedCustomer?.id === c.id ? 'bg-blue-600/20 text-blue-200' : 'bg-slate-100 text-slate-500'}`}>{c.code}</span>
                 </div>
+                <p className="text-[10px] opacity-50 font-mono mt-1">{c.phones[0] || 'بدون شماره'}</p>
               </button>
-            ))}
+            )) : (
+              <p className="text-center py-10 text-slate-300 text-xs italic">مشتری یافت نشد.</p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 2. Customer Ledger */}
+      {/* Main Content */}
       <div className="lg:col-span-9">
         {!selectedCustomer ? (
-          <div className="h-full min-h-[500px] bg-white rounded-[2.5rem] border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400">
-            <FileText size={48} className="mb-4 text-slate-300" />
-            <p className="font-bold text-lg">انتخاب دفتر مشتری برای مشاهده گزارشات</p>
+          <div className="h-full min-h-[500px] bg-white rounded-[3rem] border-4 border-dashed border-slate-100 flex flex-col items-center justify-center text-slate-300">
+            <FileText size={64} className="mb-4" />
+            <p className="font-black text-xl">یک مشتری را انتخاب کنید یا مشتری جدید ثبت کنید.</p>
           </div>
         ) : (
-          <div className="space-y-6 animate-in fade-in duration-400">
-            <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
-              <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+          <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+              <div className="flex flex-col md:flex-row justify-between items-start gap-8">
                 <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 rounded-3xl bg-blue-600 text-white flex items-center justify-center text-3xl font-black">{selectedCustomer.name.charAt(0)}</div>
+                  <div className="w-24 h-24 rounded-[2rem] bg-blue-600 text-white flex items-center justify-center text-4xl font-black shadow-2xl shadow-blue-200">{selectedCustomer.name.charAt(0)}</div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
-                    <p className="text-sm text-slate-500">کد: {selectedCustomer.code} | {selectedCustomer.phones[0]}</p>
+                    <div className="flex items-center gap-3">
+                       <h2 className="text-3xl font-black text-slate-900">{selectedCustomer.name}</h2>
+                       <span className="bg-slate-100 text-slate-500 px-3 py-1 rounded-xl text-xs font-black">کد: {selectedCustomer.code}</span>
+                    </div>
+                    <p className="text-xs font-black text-slate-400 mt-2">{selectedCustomer.phones[0] || 'بدون شماره تماس'}</p>
                   </div>
                 </div>
-                <div className="flex gap-3 w-full md:w-auto">
-                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.RESID })} className="flex-1 bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><ArrowDownLeft size={20} /> ثبت رسید</button>
-                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.BOARD })} className="flex-1 bg-rose-600 text-white px-6 py-3 rounded-2xl font-bold flex items-center justify-center gap-2"><ArrowUpRight size={20} /> ثبت برد</button>
+                <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.RESID })} className="flex-1 md:flex-none bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl hover:scale-105 transition-all"><ArrowDownLeft size={20} /> رسید</button>
+                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.BOARD })} className="flex-1 md:flex-none bg-rose-600 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl hover:scale-105 transition-all"><ArrowUpRight size={20} /> برد</button>
+                  <button onClick={() => setShowExchangeModal(true)} className="flex-1 md:flex-none bg-slate-950 text-white px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-3 shadow-xl hover:scale-105 transition-all"><Repeat size={20} /> تبادل داخلی</button>
                 </div>
               </div>
-              <div className="mt-10 pt-8 border-t border-slate-50 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Fix: Using Object.keys for more reliable type inference to prevent unknown type errors on stat.balance */}
-                {Object.keys(currencyStats).map((code) => {
-                  const stat = currencyStats[code];
+
+              <div className="mt-12 pt-10 border-t border-slate-50 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {SUPPORTED_CURRENCIES.map(curr => {
+                  const balance = customerBalances[curr.code] || 0;
                   return (
-                    <div key={code} className={`p-4 rounded-2xl border ${stat.balance >= 0 ? 'bg-white border-slate-100' : 'bg-rose-50 border-rose-100'}`}>
-                      <div className="flex justify-between mb-1"><span className="text-[10px] font-black uppercase text-slate-400">{code}</span><span className={`text-[10px] font-bold ${stat.balance >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{stat.balance >= 0 ? 'طلبکار' : 'بدهکار'}</span></div>
-                      <p className={`text-lg font-black ${stat.balance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>{Math.abs(stat.balance).toLocaleString()}</p>
+                    <div key={curr.code} className={`p-6 rounded-[2rem] border transition-all ${balance >= 0 ? 'bg-slate-50 border-slate-100' : 'bg-rose-50 border-rose-100'}`}>
+                      <p className="text-[10px] font-black uppercase text-slate-400 mb-2">{curr.label}</p>
+                      <p className={`text-xl font-black ${balance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{balance.toLocaleString()}</p>
+                      <p className={`text-[9px] font-bold mt-1 ${balance >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{balance >= 0 ? 'طلبکار (+)' : 'بدهکار (-)'}</p>
                     </div>
                   );
                 })}
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-              <h3 className="font-bold text-slate-800 mb-6">ریز تراکنش‌ها و سود خالص</h3>
-              <table className="w-full text-right text-sm">
-                <thead>
-                  <tr className="text-slate-400 border-b border-slate-100">
-                    <th className="pb-4">تاریخ</th>
-                    <th className="pb-4">توضیحات</th>
-                    <th className="pb-4">رسید (+)</th>
-                    <th className="pb-4">برد (-)</th>
-                    <th className="pb-4">سود (AFN)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {currentCustomerTrans.map(t => (
-                    <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-4 text-[10px] text-slate-400">{new Date(t.timestamp).toLocaleDateString('fa-IR')}</td>
-                      <td className="py-4">
-                        <p className="font-bold">{t.description}</p>
-                        {t.exchangeRate && <span className="text-[9px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-black">تبدیل با نرخ {t.exchangeRate}</span>}
-                      </td>
-                      <td className="py-4 font-black text-emerald-600">{t.type === TransactionType.RESID ? t.amount.toLocaleString() : '-'}</td>
-                      <td className="py-4 font-black text-rose-600">{t.type === TransactionType.BOARD ? t.amount.toLocaleString() : '-'}</td>
-                      <td className="py-4 text-indigo-600 font-black">{t.profit ? `+${t.profit.toLocaleString()}` : '-'}</td>
+            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
+               <h3 className="text-xl font-black text-slate-900 mb-8">ریز تراکنش‌های حساب</h3>
+               <div className="overflow-x-auto">
+                <table className="w-full text-right text-sm">
+                  <thead>
+                    <tr className="text-slate-400 border-b border-slate-50">
+                      <th className="pb-6 px-4 font-black text-[10px] uppercase tracking-widest">تاریخ</th>
+                      <th className="pb-6 px-4 font-black text-[10px] uppercase tracking-widest">نوع</th>
+                      <th className="pb-6 px-4 font-black text-[10px] uppercase tracking-widest">مبلغ اصلی</th>
+                      <th className="pb-6 px-4 font-black text-[10px] uppercase tracking-widest text-blue-600">نتیجه تبدیل</th>
+                      <th className="pb-6 px-4 font-black text-[10px] uppercase tracking-widest">وضعیت</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {transactions.filter(t => t.customerId === selectedCustomer.id).sort((a,b) => b.timestamp - a.timestamp).map(t => (
+                      <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-6 px-4 text-xs font-bold text-slate-400">{new Date(t.timestamp).toLocaleDateString('fa-IR')}</td>
+                        <td className="py-6 px-4"><span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>{t.type}</span></td>
+                        <td className="py-6 px-4 font-black text-slate-800">{t.amount.toLocaleString()} <span className="text-[10px] text-slate-400">{t.currency}</span></td>
+                        <td className="py-6 px-4 font-black text-blue-600">{t.convertedAmount ? `${t.convertedAmount.toLocaleString()} ${t.targetCurrency}` : '---'}</td>
+                        <td className="py-6 px-4">
+                          <span className={`text-[10px] font-black ${t.status === TransactionStatus.APPROVED ? 'text-emerald-500' : t.status === TransactionStatus.PENDING ? 'text-amber-500' : 'text-rose-500'}`}>
+                            {t.status === TransactionStatus.APPROVED ? 'تائید شده' : t.status === TransactionStatus.PENDING ? 'در انتظار' : 'رد شده'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* TRANSACTION MODAL WITH AUTO-CONVERSION */}
-      {showTransModal.show && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-4xl shadow-2xl animate-in zoom-in duration-300 my-8 border border-slate-100">
+      {/* EXCHANGE MODAL */}
+      {showExchangeModal && selectedCustomer && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-4xl shadow-2xl border border-slate-100 animate-in zoom-in duration-300 relative overflow-visible">
+            
             <div className="flex justify-between items-center mb-8">
-              <h3 className={`text-2xl font-black ${showTransModal.type === TransactionType.RESID ? 'text-emerald-600' : 'text-rose-600'}`}>ثبت {showTransModal.type} جدید</h3>
-              <button onClick={closeTransModal} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-all"><Plus className="rotate-45" /></button>
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-blue-50 text-blue-600 rounded-[1.5rem]"><Repeat size={32} /></div>
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">تبادل ارز پایه افغانی</h3>
+                  <p className="text-sm text-slate-400 font-medium italic">تمامی نرخ‌ها بر مبنای ۱ واحد ارز به افغانی سنجیده می‌شوند.</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowExchangeModal(false); setCalcTarget(null); }} className="p-3 bg-slate-100 rounded-full hover:rotate-90 transition-all"><X size={24} /></button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-black text-slate-400 mb-3 uppercase">روش پرداخت</label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1.5 rounded-2xl">
-                    <button onClick={() => setPaymentMethod('cash')} className={`py-3 rounded-xl text-sm font-black transition-all ${paymentMethod === 'cash' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500'}`}>نقد (صندوق)</button>
-                    <button onClick={() => setPaymentMethod('bank')} className={`py-3 rounded-xl text-sm font-black transition-all ${paymentMethod === 'bank' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>بانکی</button>
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <label className="block text-xs font-black text-slate-400 mb-2">مبلغ تراکنش</label>
-                    <input type="number" className="w-full p-4 bg-slate-50 rounded-2xl text-xl font-black outline-none" value={newTrans.amount || ''} onChange={(e) => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
-                  </div>
-                  <div className="w-32">
-                    <label className="block text-xs font-black text-slate-400 mb-2">واحد پول</label>
-                    <select className="w-full p-4 bg-slate-100 rounded-2xl font-bold" value={newTrans.currency} onChange={(e) => setNewTrans({...newTrans, currency: e.target.value})}>
-                      {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                {/* AUTO CONVERSION FEATURE */}
-                <div className="p-6 bg-blue-50/50 rounded-[2rem] border border-blue-100 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                           <ArrowRightLeft size={18} className="text-blue-600" />
-                           <span className="text-sm font-black text-blue-900">تبدیل خودکار و محاسبه سود</span>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input type="checkbox" className="sr-only peer" checked={newTrans.autoConvert} onChange={e => setNewTrans({...newTrans, autoConvert: e.target.checked})}/>
-                          <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        </label>
+            <div className="grid grid-cols-1 md:grid-cols-11 gap-8 items-stretch mb-10">
+              {/* SOURCE SIDE */}
+              <div className="md:col-span-5 space-y-6 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
+                 <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">از موجودی (مبدأ)</label>
+                    <div className="text-[10px] font-black text-blue-600 bg-white px-3 py-1 rounded-full border border-blue-100 flex items-center gap-1">
+                       <Wallet size={10}/> مانده: {availableSourceBalance.toLocaleString()}
                     </div>
-
-                    {newTrans.autoConvert && (
-                        <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-                           <div className="flex gap-4">
-                             <div className="flex-1">
-                               <label className="block text-[10px] font-black text-blue-400 mb-1">تبدیل به ارز مقصد</label>
-                               <select className="w-full p-3 bg-white rounded-xl text-xs font-bold" value={newTrans.targetCurrency} onChange={e => setNewTrans({...newTrans, targetCurrency: e.target.value})}>
-                                  {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                               </select>
-                             </div>
-                             <div className="flex-1">
-                               <label className="block text-[10px] font-black text-blue-400 mb-1">نرخ معامله (اختیاری)</label>
-                               <input type="number" placeholder={activeRate.toString()} className="w-full p-3 bg-white rounded-xl text-xs font-bold" onChange={e => setNewTrans({...newTrans, customRate: Number(e.target.value)})} />
-                             </div>
-                           </div>
-                           <div className="grid grid-cols-2 gap-4">
-                               <div className="bg-white p-4 rounded-2xl shadow-sm border border-blue-50">
-                                  <p className="text-[9px] font-black text-slate-400 uppercase">خروجی معادل ({newTrans.targetCurrency})</p>
-                                  <p className="text-lg font-black text-blue-600">{conversionResult?.converted.toLocaleString(undefined, {maximumFractionDigits: 2})}</p>
-                               </div>
-                               <div className="bg-emerald-50 p-4 rounded-2xl shadow-sm border border-emerald-100">
-                                  <p className="text-[9px] font-black text-emerald-600 uppercase">سود ناخالص (AFN)</p>
-                                  <p className="text-lg font-black text-emerald-700">{newTrans.profit.toLocaleString()}</p>
-                               </div>
-                           </div>
-                        </div>
-                    )}
-                </div>
-
-                <div className="relative">
-                  <label className="block text-xs font-black text-slate-400 mb-2 flex justify-between">توضیحات <button onClick={handleSmartAi} className="text-blue-600 flex items-center gap-1 text-[10px] font-black">{isAiProcessing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} هوشمند</button></label>
-                  <textarea className="w-full p-4 bg-slate-50 rounded-2xl text-sm min-h-[80px]" value={newTrans.description} onChange={(e) => setNewTrans({...newTrans, description: e.target.value})} />
-                </div>
+                 </div>
+                 <select className="w-full p-5 bg-white rounded-2xl font-black text-xl outline-none border border-slate-200" value={exchangeForm.fromCurrency} onChange={e => setExchangeForm({...exchangeForm, fromCurrency: e.target.value})}>
+                    {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                 </select>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">مبلغ تبدیل</label>
+                    <input type="number" className="w-full p-5 bg-white rounded-2xl text-2xl font-black outline-none border border-slate-200" value={exchangeForm.amount || ''} placeholder="0" onChange={e => setExchangeForm({...exchangeForm, amount: Number(e.target.value)})} />
+                 </div>
+                 <div className="relative pt-2">
+                    <label className="text-[9px] font-black text-blue-600 uppercase flex items-center gap-1 mb-2"><Calculator size={10}/> نرخ {exchangeForm.fromCurrency} به افغانی</label>
+                    <div className="flex gap-2">
+                       <input type="number" step="any" className="flex-1 p-4 bg-white rounded-xl text-lg font-black outline-none border border-slate-200" value={exchangeForm.fromRateToAfn || ''} onChange={e => setExchangeForm({...exchangeForm, fromRateToAfn: Number(e.target.value)})} />
+                       <button onClick={() => { setCalcTarget('from'); setCalcExpression(''); }} className={`p-4 rounded-xl shadow-md transition-all ${calcTarget === 'from' ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 hover:text-blue-600'}`}><Calculator size={20} /></button>
+                    </div>
+                    {calcTarget === 'from' && <CalculatorPanel expression={calcExpression} onAdd={v => setCalcExpression(p => p+v)} onClear={() => setCalcExpression('')} onBackspace={() => setCalcExpression(p => p.slice(0,-1))} onSolve={solveCalc} onClose={() => setCalcTarget(null)} />}
+                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-black text-slate-400 mb-3 uppercase">ضمائم</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={isRecording ? stopRecording : startRecording} className={`p-6 rounded-[2rem] flex flex-col items-center gap-2 border-2 ${isRecording ? 'bg-rose-50 border-rose-500 text-rose-600 animate-pulse' : 'bg-slate-50 border-transparent text-slate-600'}`}>
-                      {isRecording ? <Square size={20} /> : <Mic size={20} />} <span className="text-[10px] font-black uppercase">{isRecording ? 'توقف' : 'ضبط صدا'}</span>
-                    </button>
-                    <label className="p-6 rounded-[2rem] flex flex-col items-center gap-2 bg-slate-50 text-slate-600 cursor-pointer">
-                      <ImageIcon size={20} /> <span className="text-[10px] font-black uppercase">تصویر رسید</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={e => {
-                         const file = e.target.files?.[0];
-                         if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => setAttachments(prev => [...prev, { id: Math.random().toString(), type: 'image', data: reader.result as string, mimeType: file.type }]);
-                            reader.readAsDataURL(file);
-                         }
-                      }} />
-                    </label>
-                  </div>
-                </div>
-                <div className="bg-slate-50 p-6 rounded-[2.5rem] min-h-[160px] border border-slate-100">
-                  <p className="text-[10px] font-black text-slate-400 mb-4 uppercase">فایل‌های ضمیمه شده</p>
-                  <div className="flex flex-wrap gap-3">
-                    {attachments.map((att) => (
-                      <div key={att.id} className="relative group w-20 h-20 bg-white rounded-2xl shadow-sm overflow-hidden flex items-center justify-center">
-                        {att.type === 'image' ? <img src={att.data} className="w-full h-full object-cover" /> : <Mic className="text-blue-500" />}
-                        <button onClick={() => setAttachments(prev => prev.filter(a => a.id !== att.id))} className="absolute inset-0 bg-rose-600/80 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all"><Trash2 size={16} /></button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {/* AFN BRIDGE CENTER */}
+              <div className="md:col-span-1 flex flex-col items-center justify-center gap-4">
+                 <div className="h-full w-px bg-slate-200 relative">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4">
+                       <div className="w-14 h-14 rounded-full bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xl border-4 border-white z-10">؋</div>
+                       <div className="bg-white px-3 py-1 rounded-full border border-slate-100 shadow-sm whitespace-nowrap">
+                          <p className="text-[9px] font-black text-slate-400 uppercase text-center">معادل به افغانی</p>
+                          <p className="text-xs font-black text-blue-600 text-center">{amountInAfn.toLocaleString()}</p>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+
+              {/* TARGET SIDE */}
+              <div className="md:col-span-5 space-y-6 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100">
+                 <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest">به موجودی (مقصد)</label>
+                 <select className="w-full p-5 bg-white rounded-2xl font-black text-xl outline-none border border-blue-100" value={exchangeForm.toCurrency} onChange={e => setExchangeForm({...exchangeForm, toCurrency: e.target.value})}>
+                    {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                 </select>
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-blue-400 uppercase tracking-widest">مبلغ نهایی دریافتی</label>
+                    <div className="w-full p-5 bg-white rounded-2xl text-2xl font-black text-blue-700 border-2 border-blue-200 flex items-center justify-between shadow-inner">
+                       <span>{finalTargetAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                       <span className="text-[10px] text-blue-300 font-bold uppercase">{exchangeForm.toCurrency}</span>
+                    </div>
+                 </div>
+                 <div className="relative pt-2">
+                    <label className="text-[9px] font-black text-blue-600 uppercase flex items-center gap-1 mb-2"><Calculator size={10}/> نرخ {exchangeForm.toCurrency} به افغانی</label>
+                    <div className="flex gap-2">
+                       <input type="number" step="any" className="flex-1 p-4 bg-white rounded-xl text-lg font-black outline-none border border-blue-100" value={exchangeForm.toRateToAfn || ''} onChange={e => setExchangeForm({...exchangeForm, toRateToAfn: Number(e.target.value)})} />
+                       <button onClick={() => { setCalcTarget('to'); setCalcExpression(''); }} className={`p-4 rounded-xl shadow-md transition-all ${calcTarget === 'to' ? 'bg-blue-600 text-white' : 'bg-white text-slate-400 hover:text-blue-600'}`}><Calculator size={20} /></button>
+                    </div>
+                    {calcTarget === 'to' && <CalculatorPanel expression={calcExpression} onAdd={v => setCalcExpression(p => p+v)} onClear={() => setCalcExpression('')} onBackspace={() => setCalcExpression(p => p.slice(0,-1))} onSolve={solveCalc} onClose={() => setCalcTarget(null)} />}
+                 </div>
               </div>
             </div>
 
-            <div className="flex gap-4 mt-10">
-              <button onClick={handleAddTransaction} className={`flex-[2] py-5 rounded-2xl font-black text-white text-lg ${showTransModal.type === TransactionType.RESID ? 'bg-emerald-600 shadow-xl shadow-emerald-100' : 'bg-rose-600 shadow-xl shadow-rose-100'}`}>ثبت و ارسال برای تائید</button>
-              <button onClick={closeTransModal} className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-2xl font-black">انصراف</button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+               <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100 flex gap-4 items-start">
+                  <AlertTriangle size={24} className="text-amber-500 shrink-0" />
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                     <b>قاعده صرافی:</b> این عملیات فقط ترازهای مشتری را در دفاتر صرافی جابجا می‌کند. هیچ وجه نقدی از صندوق خارج نمی‌شود. تمام نرخ‌ها نسبت به واحد افغانی مبنای محاسبه هستند.
+                  </p>
+               </div>
+               <div className="space-y-4">
+                  <input type="number" placeholder="سود معامله (AFN)..." className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none" value={exchangeForm.profit || ''} onChange={e => setExchangeForm({...exchangeForm, profit: Number(e.target.value)})} />
+                  <button onClick={handleExchangeInternal} className="w-full bg-slate-950 text-white py-6 rounded-[2rem] font-black text-xl shadow-2xl hover:bg-black transition-all active:scale-95 flex items-center justify-center gap-3">
+                    <Check size={28} /> ثبت قطعی معامله در دفتر
+                  </button>
+               </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* MODAL: Add Customer */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
-            <h3 className="text-2xl font-black text-slate-900 mb-8">افتتاح دفتر مشتری جدید</h3>
-            <div className="space-y-5">
-              <input type="text" className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="نام کامل مشتری" onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})} />
-              <input type="text" className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="کد" onChange={(e) => setNewCustomer({...newCustomer, code: e.target.value})} />
-              <input type="text" className="w-full p-4 bg-slate-50 rounded-2xl text-sm font-bold outline-none" placeholder="تلفن" onChange={(e) => setNewCustomer({...newCustomer, phones: e.target.value})} />
-              <button onClick={handleAddCustomer} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg mt-6 shadow-xl">ثبت و ایجاد پرونده</button>
-              <button onClick={() => setShowAddModal(false)} className="w-full text-slate-400 py-2 font-bold text-sm">انصراف</button>
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="text-2xl font-black text-slate-900 mb-8 flex items-center gap-3"><UserPlus size={28} className="text-blue-600" /> افتتاح دفتر جدید</h3>
+            <div className="space-y-6">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase mr-1">نام کامل مشتری</label>
+                <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500" placeholder="مثلاً: احمد همدرد" value={newCustomer.name} onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase mr-1 flex justify-between">کد اختصاصی مشتری <span className="text-[8px] text-blue-500">(اختیاری)</span></label>
+                <div className="relative">
+                   <Hash className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                   <input type="text" className="w-full p-5 pr-12 bg-slate-50 border border-slate-100 rounded-2xl font-black font-mono outline-none focus:ring-2 focus:ring-blue-500" placeholder="101" value={newCustomer.code} onChange={(e) => setNewCustomer({...newCustomer, code: e.target.value})} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase mr-1">شماره تماس</label>
+                <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold font-mono outline-none focus:ring-2 focus:ring-blue-500" placeholder="07xxxxxxx" value={newCustomer.phones} onChange={(e) => setNewCustomer({...newCustomer, phones: e.target.value})} />
+              </div>
+              <div className="flex gap-4 mt-6">
+                <button onClick={() => {
+                  if (!newCustomer.name) { alert("نام مشتری الزامی است."); return; }
+                  const customer: Customer = { 
+                    id: Math.random().toString(36).substr(2, 9), 
+                    code: newCustomer.code || (customers.length + 101).toString(), 
+                    name: newCustomer.name, 
+                    phones: [newCustomer.phones].filter(Boolean), 
+                    status: 'active', 
+                    notes: '', 
+                    balances: {} 
+                  };
+                  setCustomers(prev => [...prev, customer]);
+                  setShowAddModal(false);
+                  setSelectedCustomer(customer);
+                }} className="flex-[2] bg-slate-950 text-white py-6 rounded-[1.5rem] font-black text-xl shadow-2xl hover:bg-black transition-all">ایجاد حساب صرافی</button>
+                <button onClick={() => setShowAddModal(false)} className="flex-1 bg-slate-100 text-slate-500 py-6 rounded-[1.5rem] font-black">لغو</button>
+              </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Other Modals (Trans) */}
+      {showTransModal.show && selectedCustomer && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-lg shadow-2xl border border-slate-100 animate-in zoom-in duration-300">
+             <div className="flex justify-between items-center mb-10">
+                <h3 className="text-2xl font-black text-slate-900">ثبت {showTransModal.type} حساب</h3>
+                <button onClick={() => setShowTransModal({show:false, type:TransactionType.RESID})} className="p-2 bg-slate-100 rounded-full"><X size={20}/></button>
+             </div>
+             <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">مبلغ</label>
+                      <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl text-2xl font-black outline-none border border-slate-100" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">واحد</label>
+                      <select className="w-full p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none border border-slate-100" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
+                         {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                      </select>
+                   </div>
+                </div>
+                <textarea className="w-full p-5 bg-slate-50 rounded-2xl text-sm font-bold min-h-[100px] outline-none border border-slate-100" placeholder="توضیحات..." value={newTrans.description} onChange={e => setNewTrans({...newTrans, description: e.target.value})} />
+                <button onClick={handleAddTransaction} className={`w-full py-6 rounded-[1.5rem] font-black text-white text-xl shadow-2xl transition-all ${showTransModal.type === TransactionType.RESID ? 'bg-emerald-600' : 'bg-rose-600'}`}>ارسال جهت تائید مدیریت</button>
+             </div>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+// MINI CALCULATOR PANEL
+const CalculatorPanel: React.FC<{
+  expression: string;
+  onAdd: (v: string) => void;
+  onClear: () => void;
+  onBackspace: () => void;
+  onSolve: () => void;
+  onClose: () => void;
+}> = ({ expression, onAdd, onClear, onBackspace, onSolve, onClose }) => {
+  return (
+    <div className="absolute top-full right-0 mt-4 w-72 bg-slate-900 rounded-[2rem] p-6 shadow-2xl z-[100] border border-slate-800 animate-in fade-in slide-in-from-top-4 duration-300">
+      <div className="flex justify-between items-center mb-5">
+        <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Keypad Engine</span>
+        <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={16}/></button>
+      </div>
+      <div className="bg-slate-800 rounded-2xl p-5 mb-5 text-left min-h-[80px] flex flex-col justify-center border border-slate-700/50">
+        <p className="text-slate-500 text-[10px] font-mono mb-1 truncate">{expression || '0'}</p>
+        <p className="text-white text-2xl font-black font-mono">
+          {(() => {
+            try { 
+              const sanitized = expression.replace(/[^-+*/0-9.]/g, '').replace(/×/g, '*').replace(/÷/g, '/');
+              const res = eval(sanitized);
+              return isNaN(res) ? '0' : res; 
+            } catch { return expression || '0'; }
+          })()}
+        </p>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        <CalcBtn label="C" onClick={onClear} color="text-rose-400 bg-slate-800" />
+        <CalcBtn label="÷" onClick={() => onAdd('/')} color="text-blue-400 bg-slate-800" />
+        <CalcBtn label="×" onClick={() => onAdd('*')} color="text-blue-400 bg-slate-800" />
+        <CalcBtn label={<Delete size={18}/>} onClick={onBackspace} color="text-slate-400 bg-slate-800" />
+        <CalcBtn label="7" onClick={() => onAdd('7')} />
+        <CalcBtn label="8" onClick={() => onAdd('8')} />
+        <CalcBtn label="9" onClick={() => onAdd('9')} />
+        <CalcBtn label="-" onClick={() => onAdd('-')} color="text-blue-400 bg-slate-800" />
+        <CalcBtn label="4" onClick={() => onAdd('4')} />
+        <CalcBtn label="5" onClick={() => onAdd('5')} />
+        <CalcBtn label="6" onClick={() => onAdd('6')} />
+        <CalcBtn label="+" onClick={() => onAdd('+')} color="text-blue-400 bg-slate-800" />
+        <CalcBtn label="1" onClick={() => onAdd('1')} />
+        <CalcBtn label="2" onClick={() => onAdd('2')} />
+        <CalcBtn label="3" onClick={() => onAdd('3')} />
+        <CalcBtn label="." onClick={() => onAdd('.')} />
+        <div className="col-span-2"><CalcBtn label="0" onClick={() => onAdd('0')} width="w-full" /></div>
+        <div className="col-span-2"><button onClick={onSolve} className="w-full h-14 rounded-2xl bg-blue-600 text-white font-black hover:bg-blue-700 transition-all text-sm shadow-xl shadow-blue-500/20 active:scale-95">تائید حاصل</button></div>
+      </div>
+    </div>
+  );
+};
+
+const CalcBtn = ({ label, onClick, color = "text-slate-300 bg-slate-800/50 hover:bg-slate-700", width = "w-full" }: any) => (
+  <button onClick={onClick} className={`${width} h-14 flex items-center justify-center rounded-2xl font-black text-lg ${color} transition-all active:scale-90`}>{label}</button>
+);
 
 export default CustomerManager;
