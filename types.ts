@@ -16,16 +16,9 @@ export type UserRole = 'admin' | 'operator';
 export interface User {
   id: string;
   username: string;
-  password: string;
+  password?: string;
   role: UserRole;
   fullName: string;
-}
-
-export interface Attachment {
-  id: string;
-  type: 'image' | 'audio';
-  data: string; // base64 string
-  mimeType: string;
 }
 
 export interface Customer {
@@ -35,9 +28,36 @@ export interface Customer {
   phones: string[];
   status: 'active' | 'inactive';
   notes: string;
-  balances: {
-    [currencyCode: string]: number;
-  };
+  balances: Record<string, number>;
+}
+
+export interface Transaction {
+  id: string;
+  customerId?: string;
+  type: TransactionType;
+  amount: number;
+  currency: string;
+  targetCurrency?: string;
+  // Professional Exchange Fields
+  buyRate?: number;       // نرخی که با مشتری فیکس شده
+  sellRate?: number;      // نرخ فروش بازار (برای محاسبه سود)
+  fee?: number;           // کارمزد معامله
+  totalBuy?: number;      // مقدار پرداختی/کسری دفتری
+  totalSell?: number;     // ارزش واقعی مارکت
+  netProfit?: number;     // سود خالص نهایی
+  
+  exchangeRate?: number;  // Deprecated - kept for compatibility
+  convertedAmount?: number;
+  description: string;
+  timestamp: number;
+  status: TransactionStatus;
+  isBank: boolean;
+  bankAccountId?: string;
+  bankFrom?: string;
+  bankTo?: string;
+  cardLastFour?: string;
+  trackingId?: string;
+  profit?: number;
 }
 
 export interface BankAccount {
@@ -48,40 +68,17 @@ export interface BankAccount {
   currency: string;
 }
 
-export interface Transaction {
-  id: string;
-  customerId?: string;
-  type: TransactionType;
-  amount: number; 
-  currency: string; 
-  trackingId?: string;
-  cardLastFour?: string;
-  senderPhoneLastFour?: string;
-  description: string;
-  timestamp: number;
-  status: TransactionStatus;
-  bankAccountId?: string;
-  sourceAccountId?: string;
-  exchangeRate?: number; // Rate of source currency TO AFN
-  targetRate?: number;   // Rate of target currency TO AFN
-  convertedAmount?: number; 
-  targetCurrency?: string;  
-  profit?: number;
-  attachments?: Attachment[];
-}
-
 export interface GlobalRate {
-  currencyCode: string; // e.g., "USD"
-  rateToAfn: number;    // e.g., 72.5
+  currencyCode: string;
+  rateToAfn: number;
   lastUpdated: number;
   source: string;
 }
 
 export const SUPPORTED_CURRENCIES = [
-  { code: 'USD', label: 'دالر (USD)', symbol: '$' },
-  { code: 'AFN', label: 'افغانی (AFN)', symbol: '؋' },
-  { code: 'IRT_CASH', label: 'تومان نقدی', symbol: 'T' },
-  { code: 'IRT_BANK', label: 'تومان بانکی', symbol: 'TB' },
-  { code: 'EUR', label: 'یورو (EUR)', symbol: '€' },
-  { code: 'PKR', label: 'کالدار (PKR)', symbol: '₨' },
+  { code: 'AFN', label: 'افغانی', symbol: '؋' },
+  { code: 'USD', label: 'دالر آمریکا', symbol: '$' },
+  { code: 'IRT_BANK', label: 'تومان بانکی', symbol: 'T' },
+  { code: 'PKR', label: 'کلدار پاکستان', symbol: '₨' },
+  { code: 'EUR', label: 'یورو', symbol: '€' }
 ];

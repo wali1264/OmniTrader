@@ -1,14 +1,13 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  LayoutDashboard, Users, Landmark, BookOpen, CheckCircle, LogOut, Wallet, 
+  LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
   Settings as SettingsIcon, Briefcase, ArrowRightLeft, PieChart, HelpCircle, 
-  Lock, User as UserIcon, KeyRound, Code2
+  Lock, Landmark
 } from 'lucide-react';
-import { Customer, BankAccount, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate } from './types';
+import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate, BankAccount } from './types';
 import Dashboard from './components/Dashboard';
 import CustomerManager from './components/CustomerManager';
-import BankManager from './components/BankManager';
 import Journal from './components/Journal';
 import Approvals from './components/Approvals';
 import Settings from './components/Settings';
@@ -16,15 +15,14 @@ import AssetCalculator from './components/AssetCalculator';
 import AnonymousDeposits from './components/AnonymousDeposits';
 import CashBoxManager from './components/CashBoxManager';
 import ExchangeBalances from './components/ExchangeBalances';
+import BankManager from './components/BankManager';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'banks' | 'journal' | 'approvals' | 'assets' | 'anonymous' | 'cashbox' | 'exchange' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'anonymous' | 'cashbox' | 'exchange' | 'settings'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
-
-  // Shop Name State
   const [shopName, setShopName] = useState(() => localStorage.getItem('s_shopName') || 'صرافی جاوید');
 
   const [users, setUsers] = useState<User[]>(() => {
@@ -39,8 +37,11 @@ const App: React.FC = () => {
   });
 
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => {
-    const saved = localStorage.getItem('s_banks');
-    return saved ? JSON.parse(saved) : [{ id: 'b1', bankName: 'بانک صادرات', accountNumber: '010...123', balance: 0, currency: 'IRT_BANK' }];
+    const saved = localStorage.getItem('s_bankAccounts');
+    return saved ? JSON.parse(saved) : [
+      { id: 'b1', bankName: 'بانک ملت', accountNumber: '1234-5678', balance: 0, currency: 'IRT_BANK' },
+      { id: 'b2', bankName: 'بانک ملی', accountNumber: '9876-5432', balance: 0, currency: 'IRT_BANK' }
+    ];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
@@ -56,37 +57,28 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('s_users', JSON.stringify(users));
     localStorage.setItem('s_customers', JSON.stringify(customers));
-    localStorage.setItem('s_banks', JSON.stringify(bankAccounts));
     localStorage.setItem('s_transactions', JSON.stringify(transactions));
     localStorage.setItem('s_rates', JSON.stringify(globalRates));
+    localStorage.setItem('s_bankAccounts', JSON.stringify(bankAccounts));
     localStorage.setItem('s_shopName', shopName);
-  }, [users, customers, bankAccounts, transactions, globalRates, shopName]);
+  }, [users, customers, transactions, globalRates, shopName, bankAccounts]);
 
   const stats = useMemo(() => {
     const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED);
+    const approvedCash = approved.filter(t => !t.isBank);
     
     const cashBox: Record<string, number> = {};
     SUPPORTED_CURRENCIES.forEach(curr => {
-      const resid = approved.filter(t => !t.bankAccountId && ((t.type === TransactionType.RESID && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code))).reduce((sum, t) => sum + (t.type === TransactionType.EXCHANGE ? (t.convertedAmount || 0) : t.amount), 0);
-      const board = approved.filter(t => !t.bankAccountId && ((t.type === TransactionType.BOARD && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.currency === curr.code))).reduce((sum, t) => sum + t.amount, 0);
+      const resid = approvedCash.filter(t => (t.type === TransactionType.RESID && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code)).reduce((sum, t) => sum + (t.type === TransactionType.EXCHANGE ? (t.convertedAmount || 0) : t.amount), 0);
+      const board = approvedCash.filter(t => (t.type === TransactionType.BOARD && t.currency === curr.code) || (t.type === TransactionType.EXCHANGE && t.currency === curr.code)).reduce((sum, t) => sum + t.amount, 0);
       cashBox[curr.code] = resid - board;
-    });
-
-    const bankSums: Record<string, number> = {};
-    bankAccounts.forEach(bank => {
-      const bankTrans = approved.filter(t => t.bankAccountId === bank.id);
-      const resid = bankTrans.filter(t => t.type === TransactionType.RESID).reduce((sum, t) => sum + t.amount, 0);
-      const board = bankTrans.filter(t => t.type === TransactionType.BOARD).reduce((sum, t) => sum + t.amount, 0);
-      const currentBalance = bank.balance + resid - board;
-      bankSums[bank.currency] = (bankSums[bank.currency] || 0) + currentBalance;
     });
 
     return { 
       cashBox, 
-      bankSums, 
-      totalProfit: approved.reduce((acc, t) => acc + (t.profit || 0), 0) 
+      totalProfit: approved.reduce((acc, t) => acc + (t.netProfit || t.profit || 0), 0) 
     };
-  }, [transactions, bankAccounts]);
+  }, [transactions]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,13 +117,14 @@ const App: React.FC = () => {
           </div>
           <nav className="space-y-1.5 flex-1 overflow-y-auto">
             <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={20} />} label="داشبورد" />
-            <NavItem active={activeTab === 'cashbox'} onClick={() => setActiveTab('cashbox')} icon={<Briefcase size={20} />} label="صندوق" />
+            <NavItem active={activeTab === 'cashbox'} onClick={() => setActiveTab('cashbox')} icon={<Briefcase size={20} />} label="صندوق نقد" />
+            <NavItem active={activeTab === 'bankAccounts'} onClick={() => setActiveTab('bankAccounts')} icon={<Landmark size={20} />} label="حسابات بانکی" />
             <NavItem active={activeTab === 'exchange'} onClick={() => setActiveTab('exchange')} icon={<ArrowRightLeft size={20} />} label="تبادل و بیلانس" />
             <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={20} />} label="مشتریان" />
-            <NavItem active={activeTab === 'banks'} onClick={() => setActiveTab('banks')} icon={<Landmark size={20} />} label="بانک‌ها" />
             <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={20} />} label="روزنامهچه" />
-            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={20} />} label="تائیدات" badge={transactions.filter(t => t.status === TransactionStatus.PENDING && t.customerId).length}/>
+            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={20} />} label="تائیدات" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
             <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={20} />} label="دارائی‌ها" />
+            <NavItem active={activeTab === 'anonymous'} onClick={() => setActiveTab('anonymous')} icon={<HelpCircle size={20} />} label="وجوه نامشخص" />
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={20} />} label="تنظیمات" />
           </nav>
           <button onClick={() => setIsLoggedIn(false)} className="mt-auto flex items-center gap-3 text-slate-500 hover:text-white transition-all p-4 border-t border-white/5">
@@ -143,24 +136,23 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto">
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 px-10 py-5 flex justify-between items-center shadow-sm">
           <h2 className="text-2xl font-black text-slate-900">پنل مدیریت {shopName}</h2>
-          <div className="flex gap-8">
-            <div className="text-left border-r border-slate-100 pr-6">
+          <div className="text-left border-r border-slate-100 pr-6">
               <p className="text-[10px] font-black text-slate-400 uppercase mb-1">صندوق (USD)</p>
               <p className="text-sm font-black text-emerald-600">{(stats.cashBox['USD'] || 0).toLocaleString()} $</p>
-            </div>
           </div>
         </header>
 
         <div className="p-10 max-w-[1600px] mx-auto min-h-screen">
-            {activeTab === 'dashboard' && <Dashboard stats={stats} bankAccounts={bankAccounts} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} />}
-            {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} globalRates={globalRates} />}
-            {activeTab === 'banks' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
+            {activeTab === 'dashboard' && <Dashboard stats={stats} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} bankAccounts={bankAccounts} />}
+            {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} />}
+            {activeTab === 'bankAccounts' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
             {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
-            {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} />}
-            {activeTab === 'assets' && <AssetCalculator customers={customers} bankAccounts={bankAccounts} stats={stats} globalRates={globalRates} />}
+            {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} />}
+            {activeTab === 'assets' && <AssetCalculator customers={customers} stats={stats} globalRates={globalRates} />}
+            {activeTab === 'anonymous' && <AnonymousDeposits transactions={transactions} setTransactions={setTransactions} customers={customers} />}
             {activeTab === 'cashbox' && <CashBoxManager transactions={transactions} stats={stats} currentUser={currentUser} customers={customers} shopName={shopName} />}
             {activeTab === 'exchange' && <ExchangeBalances transactions={transactions} globalRates={globalRates} />}
-            {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} shopName={shopName} setShopName={setShopName} />}
+            {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} shopName={shopName} setShopName={setShopName} />}
         </div>
       </main>
     </div>
