@@ -1,8 +1,10 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
-  Search, UserPlus, ArrowUpRight, ArrowDownLeft, 
-  Users, FileText, Repeat, X, Calculator, Equal, ChevronRight, AlertTriangle, TrendingUp, Info, DollarSign
+  Search, UserPlus, Users, FileText, Repeat, X, Calculator, 
+  ChevronRight, Info, Plus, Minus, Hash, Percent, DollarSign, 
+  Coins, CreditCard, Wallet, ArrowDownLeft, ArrowUpRight, CheckCircle2,
+  AlertCircle, ArrowRight, Zap, InfoIcon
 } from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
@@ -14,52 +16,37 @@ interface CustomerManagerProps {
   globalRates: GlobalRate[];
 }
 
-const InlineCalculator = ({ onResult, onClose }: { onResult: (val: number) => void, onClose: () => void }) => {
-  const [expr, setExpr] = useState('');
-  const calculate = () => {
-    try {
-      const result = Function(`"use strict"; return (${expr.replace(/[^-()\d/*+.]/g, '')})`)();
-      if (!isNaN(result)) onResult(result);
-    } catch (e) { alert("عبارت نامعتبر"); }
-  };
-  const buttons = ['7', '8', '9', '/', '4', '5', '6', '*', '1', '2', '3', '-', '0', '.', '+'];
-  return (
-    <div className="absolute z-50 bottom-full mb-2 right-0 bg-slate-900 p-4 rounded-3xl shadow-2xl border border-white/10 w-48 animate-in zoom-in">
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-[8px] font-black text-slate-500 uppercase">Quick Calc</span>
-        <button onClick={onClose} className="text-slate-500 hover:text-white"><X size={12}/></button>
-      </div>
-      <input type="text" className="w-full bg-black/40 border border-white/5 rounded-xl p-2 mb-3 text-left font-mono text-white text-sm outline-none" value={expr} onChange={(e) => setExpr(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && calculate()} autoFocus />
-      <div className="grid grid-cols-4 gap-1.5">
-        {buttons.map(b => (
-          <button key={b} onClick={() => setExpr(prev => prev + b)} className="p-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-xs font-bold">{b === '*' ? '×' : b === '/' ? '÷' : b}</button>
-        ))}
-        <button onClick={calculate} className="col-span-1 p-2 bg-blue-600 text-white rounded-lg flex items-center justify-center"><Equal size={14}/></button>
-      </div>
-    </div>
-  );
-};
-
 const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustomers, transactions, setTransactions, globalRates }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTransModal, setShowTransModal] = useState<{show: boolean, type: TransactionType}>({ show: false, type: TransactionType.RESID });
   const [showExchangeModal, setShowExchangeModal] = useState(false);
-  const [activeCalc, setActiveCalc] = useState<'buy' | 'sell' | 'fee' | null>(null);
 
-  const [exchangeForm, setExchangeForm] = useState({
+  // --- Exchange State with Profit/Fee Support ---
+  const [exchangeData, setExchangeData] = useState({
+    fromCurrency: 'USD',
+    toCurrency: 'AFN',
     amount: 0,
-    baseCurrency: 'USD',
-    quoteCurrency: 'AFN',
-    buyRate: 0,   // نرخی که با مشتری حساب می‌کنیم (Customer Rate)
-    sellRate: 0,  // نرخ واقعی بازار/دفتری (Market Rate)
-    fee: 0,       // کارمزد معامله به افغانی
+    rate: 1,
+    fee: 0,
+    feeType: 'fixed' as 'fixed' | 'percent',
     description: ''
   });
 
   const [newTrans, setNewTrans] = useState({ amount: 0, currency: 'AFN', description: '' });
   const [newCustomer, setNewCustomer] = useState({ name: '', code: '' });
+
+  // Calculations for display
+  const exchangeCalculations = useMemo(() => {
+    const rawTotal = exchangeData.amount * exchangeData.rate;
+    const calculatedFee = exchangeData.feeType === 'fixed' 
+      ? exchangeData.fee 
+      : (rawTotal * (exchangeData.fee / 100));
+    const netAmount = rawTotal - calculatedFee;
+    
+    return { rawTotal, calculatedFee, netAmount };
+  }, [exchangeData]);
 
   const customerBalances = useMemo(() => {
     const balances: Record<string, number> = {};
@@ -74,73 +61,46 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustome
     return balances;
   }, [selectedCustomer, transactions]);
 
-  // منطق محاسباتی دقیق صرافی
-  const calcResults = useMemo(() => {
-    const totalBuy = exchangeForm.amount * exchangeForm.buyRate;   // چیزی که به مشتری می‌دهیم (یا از او کسر می‌کنیم)
-    const totalSell = exchangeForm.amount * exchangeForm.sellRate; // ارزش واقعی ارز دریافتی در بازار
-    const netProfit = totalSell - totalBuy - exchangeForm.fee;     // سود خالص نهایی
-    return { totalBuy, totalSell, netProfit };
-  }, [exchangeForm]);
-
-  useEffect(() => {
-    if (showExchangeModal) {
-      const rate = globalRates.find(r => r.currencyCode === exchangeForm.baseCurrency)?.rateToAfn || 0;
-      setExchangeForm(prev => ({ 
-        ...prev, 
-        buyRate: rate, 
-        sellRate: rate + 0.5 // به صورت پیش‌فرض نیم واحد مارجین فروش
-      }));
-    }
-  }, [showExchangeModal, exchangeForm.baseCurrency, globalRates]);
-
   const handleExchangeSubmit = () => {
-    if (!selectedCustomer) return;
-    if (exchangeForm.amount > (customerBalances[exchangeForm.baseCurrency] || 0)) {
-      alert("خطا: موجودی کافی نیست."); return;
-    }
+    if (!selectedCustomer || exchangeData.amount <= 0 || exchangeData.rate <= 0) return;
 
-    const transaction: Transaction = {
-      id: 'EX-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
-      customerId: selectedCustomer.id,
-      type: TransactionType.EXCHANGE,
-      amount: exchangeForm.amount,
-      currency: exchangeForm.baseCurrency,
-      targetCurrency: exchangeForm.quoteCurrency,
-      buyRate: exchangeForm.buyRate,
-      sellRate: exchangeForm.sellRate,
-      fee: exchangeForm.fee,
-      totalBuy: calcResults.totalBuy,
-      totalSell: calcResults.totalSell,
-      netProfit: calcResults.netProfit,
-      profit: calcResults.netProfit, 
-      convertedAmount: calcResults.totalBuy, 
-      description: exchangeForm.description || `تبادله ${exchangeForm.amount} ${exchangeForm.baseCurrency} به افغانی بر پایه سود خالص`,
-      timestamp: Date.now(),
-      status: TransactionStatus.PENDING,
-      isBank: false
-    };
+    const timestamp = Date.now();
+    const batchId = 'EXCH-' + Math.random().toString(36).substr(2, 5).toUpperCase();
+    const { netAmount, calculatedFee } = exchangeCalculations;
 
-    setTransactions(prev => [...prev, transaction]);
+    const exchangeTransactions: Transaction[] = [
+      {
+        id: `${batchId}-OUT`,
+        customerId: selectedCustomer.id,
+        type: TransactionType.EXCHANGE,
+        amount: exchangeData.amount,
+        currency: exchangeData.fromCurrency,
+        description: exchangeData.description || `تبادله: کسر ${exchangeData.amount} ${exchangeData.fromCurrency} برای تبدیل به ${exchangeData.toCurrency}`,
+        timestamp,
+        status: TransactionStatus.PENDING,
+        isBank: false
+      },
+      {
+        id: `${batchId}-IN`,
+        customerId: selectedCustomer.id,
+        type: TransactionType.EXCHANGE,
+        amount: exchangeData.amount,
+        currency: exchangeData.fromCurrency,
+        targetCurrency: exchangeData.toCurrency,
+        exchangeRate: exchangeData.rate,
+        convertedAmount: netAmount,
+        profit: calculatedFee, // Saving the fee as profit
+        description: exchangeData.description || `تبادله: واریز ${netAmount} ${exchangeData.toCurrency} (نرخ: ${exchangeData.rate} | فی: ${calculatedFee})`,
+        timestamp,
+        status: TransactionStatus.PENDING,
+        isBank: false
+      }
+    ];
+
+    setTransactions(prev => [...prev, ...exchangeTransactions]);
     setShowExchangeModal(false);
-    alert("سند تبادله با موفقیت ثبت و آماده تائید مدیریت شد.");
-  };
-
-  const handleAddTransaction = () => {
-    if (!selectedCustomer || newTrans.amount <= 0) return;
-    const transaction: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
-      customerId: selectedCustomer.id,
-      type: showTransModal.type,
-      amount: Number(newTrans.amount),
-      currency: newTrans.currency,
-      description: newTrans.description,
-      timestamp: Date.now(),
-      status: TransactionStatus.PENDING,
-      isBank: false
-    };
-    setTransactions(prev => [...prev, transaction]);
-    setShowTransModal({ show: false, type: TransactionType.RESID });
-    setNewTrans({ amount: 0, currency: 'AFN', description: '' });
+    setExchangeData({ fromCurrency: 'USD', toCurrency: 'AFN', amount: 0, rate: 1, fee: 0, feeType: 'fixed', description: '' });
+    alert("تراکنش تبادله با موفقیت ثبت شد.");
   };
 
   const filteredCustomers = useMemo(() => customers.filter(c => c.name.includes(searchTerm) || c.code.includes(searchTerm)), [customers, searchTerm]);
@@ -149,20 +109,20 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustome
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
       <div className="lg:col-span-3">
         <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 p-6 sticky top-24">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-black text-slate-800 flex items-center gap-2"><Users size={20} className="text-blue-600" /> مشتریان</h3>
-            <button onClick={() => setShowAddModal(true)} className="p-2.5 bg-blue-600 text-white rounded-2xl"><UserPlus size={20} /></button>
+          <div className="flex justify-between items-center mb-6 text-right">
+            <h3 className="font-black text-slate-800 flex items-center gap-2">مشتریان <Users size={20} className="text-blue-600" /></h3>
+            <button onClick={() => setShowAddModal(true)} className="p-2.5 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all shadow-lg"><UserPlus size={20} /></button>
           </div>
-          <div className="relative mb-6">
+          <div className="relative mb-6 text-right">
             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input type="text" placeholder="جستجو..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3.5 pr-12 pl-4 text-sm font-bold outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <input type="text" placeholder="جستجو نام یا کد..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3.5 pr-12 pl-4 text-sm font-bold outline-none focus:bg-white transition-all text-right" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           <div className="space-y-2 max-h-[calc(100vh-340px)] overflow-y-auto custom-scrollbar">
             {filteredCustomers.map(c => (
-              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-5 rounded-2xl text-right transition-all ${selectedCustomer?.id === c.id ? 'bg-slate-950 text-white shadow-xl' : 'bg-white border border-slate-50 hover:bg-slate-50'}`}>
+              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-5 rounded-2xl text-right transition-all group ${selectedCustomer?.id === c.id ? 'bg-slate-950 text-white shadow-xl' : 'bg-white border border-slate-50 hover:bg-slate-50'}`}>
                 <div className="flex justify-between items-start">
                    <p className="font-black text-sm">{c.name}</p>
-                   <span className="text-[9px] opacity-60">{c.code}</span>
+                   <span className="text-[9px] opacity-60 font-mono">{c.code}</span>
                 </div>
               </button>
             ))}
@@ -173,196 +133,242 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, setCustome
       <div className="lg:col-span-9">
         {!selectedCustomer ? (
           <div className="h-full min-h-[500px] bg-white rounded-[3rem] border-4 border-dashed border-slate-100 flex flex-col items-center justify-center text-slate-300">
-            <Users size={64} className="mb-4" />
-            <p className="font-black text-xl">یک مشتری انتخاب کنید.</p>
+            <Users size={64} className="mb-4 opacity-20" />
+            <p className="font-black text-xl text-center">یک مشتری از لیست سمت راست<br/>انتخاب کنید.</p>
           </div>
         ) : (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
               <div className="flex flex-col md:flex-row justify-between items-start gap-8">
                 <div className="flex items-center gap-6">
-                  <div className="w-20 h-20 rounded-3xl bg-blue-600 text-white flex items-center justify-center text-3xl font-black">{selectedCustomer.name.charAt(0)}</div>
-                  <div>
+                  <div className="w-20 h-20 rounded-3xl bg-blue-600 text-white flex items-center justify-center text-3xl font-black shadow-xl shadow-blue-100">{selectedCustomer.name.charAt(0)}</div>
+                  <div className="text-right">
                     <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
-                    <p className="text-xs font-black text-slate-400">کد دفتری: {selectedCustomer.code}</p>
+                    <p className="text-xs font-black text-slate-400">شناسه دفتر: {selectedCustomer.code}</p>
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.RESID })} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2"><ArrowDownLeft size={18} /> رسید نقد</button>
-                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.BOARD })} className="bg-rose-600 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2"><ArrowUpRight size={18} /> بورد نقد</button>
-                  <button onClick={() => setShowExchangeModal(true)} className="bg-slate-950 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2"><Repeat size={18} /> تبادله ارز</button>
+                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.RESID })} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-emerald-700 shadow-lg">رسید نقد</button>
+                  <button onClick={() => setShowTransModal({ show: true, type: TransactionType.BOARD })} className="bg-rose-600 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-rose-700 shadow-lg">بورد نقد</button>
+                  <button onClick={() => setShowExchangeModal(true)} className="bg-slate-950 text-white px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 shadow-lg hover:bg-black transition-all active:scale-95"><Repeat size={18} /> تبادله ارز</button>
                 </div>
               </div>
-              <div className="mt-12 pt-10 border-t border-slate-50 grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="mt-12 pt-10 border-t border-slate-50 grid grid-cols-2 lg:grid-cols-5 gap-4">
                 {SUPPORTED_CURRENCIES.map(curr => (
-                  <div key={curr.code} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100">
-                    <p className="text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest">{curr.label}</p>
-                    <p className={`text-xl font-black ${(customerBalances[curr.code] || 0) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{(customerBalances[curr.code] || 0).toLocaleString()}</p>
+                  <div key={curr.code} className="p-6 rounded-[2rem] bg-slate-50 border border-slate-100 hover:bg-white transition-all group text-right">
+                    <p className="text-[10px] font-black text-slate-400 mb-2 uppercase tracking-widest flex items-center justify-end gap-1">
+                      {curr.label}
+                    </p>
+                    <p className={`text-xl font-black ${(customerBalances[curr.code] || 0) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                      {(customerBalances[curr.code] || 0).toLocaleString()}
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="bg-white p-8 rounded-[3rem] border border-slate-100">
-               <h3 className="text-xl font-black mb-8 px-4">تراکنش‌های اخیر مشتری</h3>
-               <table className="w-full text-right text-sm">
-                  <thead className="text-slate-400 border-b border-slate-50 font-black">
-                    <tr><th className="pb-6 px-6">تاریخ</th><th className="pb-6 px-6">نوع</th><th className="pb-6 px-6">مبلغ</th><th className="pb-6 px-6">شرح</th><th className="pb-6 px-6">وضعیت</th></tr>
-                  </thead>
-                  <tbody>
-                    {transactions.filter(t => t.customerId === selectedCustomer.id).sort((a,b) => b.timestamp - a.timestamp).map(t => (
-                      <tr key={t.id} className="border-b border-slate-50">
-                        <td className="py-6 px-6 text-xs text-slate-400">{new Date(t.timestamp).toLocaleDateString('fa-IR')}</td>
-                        <td className="py-6 px-6 font-black text-xs">{t.type}</td>
-                        <td className="py-6 px-6 font-black">{t.amount.toLocaleString()} <span className="text-[10px] opacity-40">{t.currency}</span></td>
-                        <td className="py-6 px-6 text-slate-500 text-xs truncate max-w-[200px]">{t.description}</td>
-                        <td className="py-6 px-6">
-                           <span className={`text-[9px] font-black px-2 py-1 rounded-lg ${t.status === TransactionStatus.APPROVED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>{t.status === TransactionStatus.APPROVED ? 'تائید' : 'انتظار'}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-               </table>
+               <h3 className="text-xl font-black mb-8 px-4 flex items-center justify-end gap-3"><FileText className="text-slate-400" /> تراکنش‌های اخیر مشتری</h3>
+               <div className="overflow-x-auto">
+                 <table className="w-full text-right text-sm">
+                    <thead className="text-slate-400 border-b border-slate-50 font-black">
+                      <tr><th className="pb-6 px-6">تاریخ</th><th className="pb-6 px-6">نوع</th><th className="pb-6 px-6">مبلغ</th><th className="pb-6 px-6">شرح</th><th className="pb-6 px-6">وضعیت</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {transactions.filter(t => t.customerId === selectedCustomer.id).sort((a,b) => b.timestamp - a.timestamp).slice(0, 10).map(t => (
+                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors text-right">
+                          <td className="py-6 px-6 text-xs text-slate-400 font-bold">{new Date(t.timestamp).toLocaleDateString('fa-IR')}</td>
+                          <td className="py-6 px-6 font-black text-xs">{t.type}</td>
+                          <td className="py-6 px-6 font-black">
+                            {t.amount.toLocaleString()} 
+                            <span className="text-[10px] opacity-40 mr-1 uppercase">{t.currency}</span>
+                          </td>
+                          <td className="py-6 px-6 text-slate-500 text-xs truncate max-w-[250px]">{t.description}</td>
+                          <td className="py-6 px-6 text-center">
+                             <span className={`text-[9px] font-black px-3 py-1.5 rounded-xl ${t.status === TransactionStatus.APPROVED ? 'bg-emerald-50 text-emerald-600' : t.status === TransactionStatus.PENDING ? 'bg-amber-50 text-amber-600' : 'bg-rose-50 text-rose-600'}`}>
+                               {t.status === TransactionStatus.APPROVED ? 'تائید شده' : t.status === TransactionStatus.PENDING ? 'انتظار' : 'رد شده'}
+                             </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                 </table>
+               </div>
             </div>
           </div>
         )}
       </div>
 
+      {/* مودال تبادله با سیستم فی و سود صراف */}
       {showExchangeModal && selectedCustomer && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-4xl shadow-2xl animate-in zoom-in">
-            <div className="flex justify-between items-center mb-10">
-              <div className="flex items-center gap-4">
-                <div className="p-4 bg-blue-50 text-blue-600 rounded-3xl"><TrendingUp size={28} /></div>
-                <div>
-                  <h3 className="text-2xl font-black text-slate-900">محاسبه و ثبت سود خالص تبادله</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">فرمول: (مقدار × نرخ فروش بازار) - (مقدار × نرخ خرید مشتری) - کارمزد</p>
-                </div>
-              </div>
-              <button onClick={() => setShowExchangeModal(false)} className="p-3 hover:bg-rose-50 rounded-full transition-all"><X size={24}/></button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10 mb-8 items-start">
-              {/* بخش مشتری - خرید از مشتری */}
-              <div className="space-y-6 p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100">
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2"><Users size={12}/> جزئیات مشتری (Buy)</label>
-                  <span className="text-[10px] font-bold text-slate-400">موجودی: {customerBalances[exchangeForm.baseCurrency]?.toLocaleString()}</span>
-                </div>
-                
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 text-right">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-xl shadow-2xl animate-in zoom-in duration-200">
+             <div className="flex justify-between items-center mb-8">
+                <h3 className="text-2xl font-black text-slate-900">تبادله ارز و تعیین سود</h3>
+                <button onClick={() => setShowExchangeModal(false)} className="p-3 bg-slate-50 rounded-full hover:bg-rose-50 transition-all"><X size={20}/></button>
+             </div>
+             
+             <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-2">
-                     <label className="text-[9px] font-black text-slate-400 uppercase">ارز پایه</label>
-                     <select className="w-full p-4 bg-white rounded-2xl font-black border border-slate-200 outline-none" value={exchangeForm.baseCurrency} onChange={e => setExchangeForm({...exchangeForm, baseCurrency: e.target.value})}>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">ارز مبدأ (برداشت)</label>
+                      <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none" 
+                        value={exchangeData.fromCurrency} 
+                        onChange={e => setExchangeData({...exchangeData, fromCurrency: e.target.value})}>
                         {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                     </select>
+                      </select>
                    </div>
                    <div className="space-y-2">
-                     <label className="text-[9px] font-black text-slate-400 uppercase">مقدار ارز</label>
-                     <input type="number" className="w-full p-4 bg-white rounded-2xl font-bold border border-slate-200 text-base outline-none" placeholder="0" value={exchangeForm.amount || ''} onChange={e => setExchangeForm({...exchangeForm, amount: Number(e.target.value)})} />
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">ارز مقصد (واریز)</label>
+                      <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none" 
+                        value={exchangeData.toCurrency} 
+                        onChange={e => setExchangeData({...exchangeData, toCurrency: e.target.value})}>
+                        {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                      </select>
                    </div>
                 </div>
 
-                <div className="space-y-2 relative">
-                  <label className="text-[9px] font-black text-emerald-600 uppercase mr-1 flex justify-between">نرخ توافقی مشتری (Buy Rate) <button onClick={() => setActiveCalc('buy')} className="text-blue-600"><Calculator size={14}/></button></label>
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ مبدأ</label>
+                      <input type="number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none text-right" placeholder="0" 
+                        value={exchangeData.amount || ''} 
+                        onChange={e => setExchangeData({...exchangeData, amount: Number(e.target.value)})} />
+                   </div>
+                   <div className="space-y-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">نرخ تبادله</label>
+                      <input type="number" step="0.0001" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black outline-none text-right" placeholder="1.00" 
+                        value={exchangeData.rate || ''} 
+                        onChange={e => setExchangeData({...exchangeData, rate: Number(e.target.value)})} />
+                   </div>
+                </div>
+
+                {/* بخش سود و فی صراف */}
+                <div className="bg-slate-50 p-5 rounded-[2rem] border border-slate-100">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">تعیین فی / سود صرافی</span>
+                    <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100">
+                       <button onClick={() => setExchangeData({...exchangeData, feeType: 'fixed'})} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all ${exchangeData.feeType === 'fixed' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>مبلغ ثابت</button>
+                       <button onClick={() => setExchangeData({...exchangeData, feeType: 'percent'})} className={`px-4 py-1 rounded-lg text-[9px] font-black transition-all ${exchangeData.feeType === 'percent' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>درصدی (%)</button>
+                    </div>
+                  </div>
                   <div className="relative">
-                    <input type="number" step="0.001" className="w-full p-5 bg-white rounded-2xl font-black border border-slate-200 text-sm outline-none" value={exchangeForm.buyRate} onChange={e => setExchangeForm({...exchangeForm, buyRate: Number(e.target.value)})} />
-                    {activeCalc === 'buy' && <InlineCalculator onClose={() => setActiveCalc(null)} onResult={(v) => { setExchangeForm({...exchangeForm, buyRate: v}); setActiveCalc(null); }} />}
-                  </div>
-                  <p className="text-[9px] text-slate-400 italic">مبلغ کسر شده از مشتری بر اساس این نرخ است.</p>
-                </div>
-
-                <div className="p-5 bg-white rounded-2xl border border-slate-100 shadow-inner">
-                   <p className="text-[9px] font-black text-slate-400 uppercase mb-1">جمع پرداختی صرافی (Total Buy)</p>
-                   <p className="text-xl font-black text-slate-700">{calcResults.totalBuy.toLocaleString()} <span className="text-[10px]">AFN</span></p>
-                </div>
-              </div>
-
-              {/* بخش مارکت - فروش واقعی */}
-              <div className="space-y-6 p-8 bg-blue-50/20 rounded-[2.5rem] border border-blue-100">
-                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 mb-2"><TrendingUp size={12}/> ارزش واقعی بازار (Sell)</label>
-                
-                <div className="space-y-2 relative">
-                  <label className="text-[9px] font-black text-blue-600 uppercase mr-1 flex justify-between">نرخ دفتری/مارکت (Sell Rate) <button onClick={() => setActiveCalc('sell')} className="text-blue-600"><Calculator size={14}/></button></label>
-                  <div className="relative">
-                    <input type="number" step="0.001" className="w-full p-5 bg-white rounded-2xl font-black border border-slate-200 text-sm outline-none" value={exchangeForm.sellRate} onChange={e => setExchangeForm({...exchangeForm, sellRate: Number(e.target.value)})} />
-                    {activeCalc === 'sell' && <InlineCalculator onClose={() => setActiveCalc(null)} onResult={(v) => { setExchangeForm({...exchangeForm, sellRate: v}); setActiveCalc(null); }} />}
-                  </div>
-                  <p className="text-[9px] text-slate-400 italic">ارزش واقعی این ارز در مارکت صرافی.</p>
-                </div>
-
-                <div className="space-y-2 relative">
-                  <label className="text-[9px] font-black text-slate-400 uppercase mr-1 flex justify-between">کارمزد معامله (Fee in AFN) <button onClick={() => setActiveCalc('fee')} className="text-blue-600"><Calculator size={14}/></button></label>
-                  <div className="relative">
-                    <input type="number" className="w-full p-5 bg-white rounded-2xl font-black border border-slate-200 text-sm outline-none" value={exchangeForm.fee} onChange={e => setExchangeForm({...exchangeForm, fee: Number(e.target.value)})} />
-                    {activeCalc === 'fee' && <InlineCalculator onClose={() => setActiveCalc(null)} onResult={(v) => { setExchangeForm({...exchangeForm, fee: v}); setActiveCalc(null); }} />}
+                    <input 
+                      type="number" 
+                      className="w-full p-4 bg-white border border-slate-200 rounded-xl font-black outline-none text-right" 
+                      placeholder={exchangeData.feeType === 'fixed' ? "مبلغ فی به ارز مقصد" : "درصد فی (مثلاً 0.5)"}
+                      value={exchangeData.fee || ''}
+                      onChange={e => setExchangeData({...exchangeData, fee: Number(e.target.value)})}
+                    />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300">
+                       {exchangeData.feeType === 'fixed' ? exchangeData.toCurrency : <Percent size={14}/>}
+                    </div>
                   </div>
                 </div>
 
-                <div className={`p-6 rounded-2xl border-2 transition-all shadow-lg ${calcResults.netProfit < 0 ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] font-black text-slate-500 uppercase">سود عملیاتی خالص</span>
-                    {calcResults.netProfit < 0 && <span className="flex items-center gap-1 text-rose-600 text-[10px] font-black animate-pulse"><AlertTriangle size={14}/> ضرر تبادله!</span>}
+                {/* ماشین حساب نهایی */}
+                {exchangeData.amount > 0 && exchangeData.rate > 0 && (
+                  <div className="p-6 bg-slate-950 text-white rounded-[2.5rem] shadow-xl space-y-4">
+                    <div className="flex justify-between items-center opacity-60">
+                      <span className="text-xs font-bold">مجموع ناخالص:</span>
+                      <span className="font-mono">{exchangeCalculations.rawTotal.toLocaleString()} {exchangeData.toCurrency}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-rose-400">
+                      <span className="text-xs font-bold">سود صراف (کسر فی):</span>
+                      <span className="font-mono italic">-{exchangeCalculations.calculatedFee.toLocaleString()} {exchangeData.toCurrency}</span>
+                    </div>
+                    <div className="pt-4 border-t border-white/10 flex justify-between items-center">
+                      <span className="text-sm font-black">خالص دریافتی مشتری:</span>
+                      <span className="text-2xl font-black text-emerald-400">{exchangeCalculations.netAmount.toLocaleString()} {exchangeData.toCurrency}</span>
+                    </div>
                   </div>
-                  <p className={`text-3xl font-black text-center ${calcResults.netProfit < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{calcResults.netProfit.toLocaleString()} <span className="text-xs uppercase">AFN</span></p>
-                </div>
-              </div>
-            </div>
+                )}
 
-            <div className="mb-8">
-               <label className="text-[10px] font-black text-slate-400 uppercase mr-1">شرح تراکنش</label>
-               <input type="text" placeholder="مثلاً: جابجایی دالر به افغانی بر اساس مارکت" className="w-full p-4 bg-slate-50 rounded-2xl font-bold border border-slate-100 outline-none focus:bg-white" value={exchangeForm.description} onChange={e => setExchangeForm({...exchangeForm, description: e.target.value})} />
-            </div>
-            
-            <button onClick={handleExchangeSubmit} disabled={exchangeForm.amount <= 0} className="w-full bg-slate-950 text-white py-6 rounded-3xl font-black text-xl shadow-2xl hover:bg-black transition-all disabled:opacity-50 flex items-center justify-center gap-4 active:scale-95">
-              تائید نهایی و ثبت سند سود <ChevronRight size={24}/>
-            </button>
+                <div className="space-y-2">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح تراکنش (اختیاری)</label>
+                   <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-right" placeholder="توضیحات را اینجا بنویسید..." 
+                    value={exchangeData.description} 
+                    onChange={e => setExchangeData({...exchangeData, description: e.target.value})} />
+                </div>
+
+                <button 
+                  onClick={handleExchangeSubmit} 
+                  disabled={exchangeData.amount <= 0 || exchangeData.rate <= 0}
+                  className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black text-xl shadow-xl hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center gap-3">
+                  تائید و ثبت تبادله <ArrowRight size={24} />
+                </button>
+             </div>
           </div>
         </div>
       )}
 
-      {/* مودال‌های پایه بدون تغییر */}
+      {/* مودال‌های پایه واریز و برداشت نقد */}
       {showTransModal.show && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-w-lg shadow-2xl">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 text-right">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-lg shadow-2xl animate-in zoom-in duration-200">
              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-black text-slate-900">ثبت سند نقدی</h3>
-                <button onClick={() => setShowTransModal({show:false, type:TransactionType.RESID})} className="p-3 bg-slate-50 rounded-full hover:bg-rose-50"><X size={20}/></button>
+                <h3 className="text-2xl font-black text-slate-900">ثبت سند نقد ({showTransModal.type})</h3>
+                <button onClick={() => setShowTransModal({show:false, type:TransactionType.RESID})} className="p-3 bg-slate-50 rounded-full hover:bg-rose-50 transition-all"><X size={20}/></button>
              </div>
              <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">مبلغ</label>
-                      <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl text-lg font-black border border-slate-100 outline-none" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                   <div className="space-y-2 text-right">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ</label>
+                      <input type="number" className="w-full p-5 bg-slate-50 rounded-2xl text-lg font-black border border-slate-100 outline-none focus:bg-white text-right" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
                    </div>
-                   <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">واحد پول</label>
-                      <select className="w-full p-5 bg-slate-50 rounded-2xl font-black border border-slate-100 outline-none" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
-                         {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                   <div className="space-y-2 text-right">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">واحد پول</label>
+                      <select className="w-full p-5 bg-slate-50 rounded-2xl font-black border border-slate-100 outline-none cursor-pointer text-right" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
+                         {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                       </select>
                    </div>
                 </div>
-                <textarea className="w-full p-5 bg-slate-50 rounded-2xl text-sm font-bold min-h-[100px] border border-slate-100 outline-none" placeholder="شرح تراکنش..." value={newTrans.description} onChange={e => setNewTrans({...newTrans, description: e.target.value})} />
-                <button onClick={handleAddTransaction} className={`w-full py-6 rounded-2xl font-black text-white text-xl shadow-xl transition-all ${showTransModal.type === TransactionType.RESID ? 'bg-emerald-600' : 'bg-rose-600'}`}>ثبت نهایی سند</button>
+                <div className="space-y-2 text-right">
+                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">توضیحات</label>
+                   <textarea className="w-full p-5 bg-slate-50 rounded-2xl text-sm font-bold min-h-[120px] border border-slate-100 outline-none focus:bg-white text-right" placeholder="جزئیات را اینجا وارد کنید..." value={newTrans.description} onChange={e => setNewTrans({...newTrans, description: e.target.value})} />
+                </div>
+                <button onClick={() => {
+                   if (!selectedCustomer || newTrans.amount <= 0) return;
+                   const transaction: Transaction = {
+                      id: Math.random().toString(36).substr(2, 9),
+                      customerId: selectedCustomer.id,
+                      type: showTransModal.type,
+                      amount: Number(newTrans.amount),
+                      currency: newTrans.currency,
+                      description: newTrans.description,
+                      timestamp: Date.now(),
+                      status: TransactionStatus.PENDING,
+                      isBank: false
+                   };
+                   setTransactions(prev => [...prev, transaction]);
+                   setShowTransModal({ show: false, type: TransactionType.RESID });
+                   setNewTrans({ amount: 0, currency: 'AFN', description: '' });
+                }} className={`w-full py-6 rounded-2xl font-black text-white text-xl shadow-xl transition-all active:scale-95 ${showTransModal.type === TransactionType.RESID ? 'bg-emerald-600 shadow-emerald-100 hover:bg-emerald-700' : 'bg-rose-600 shadow-rose-100 hover:bg-rose-700'}`}>ثبت سند نقد</button>
              </div>
           </div>
         </div>
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl">
-            <h3 className="text-2xl font-black mb-8 text-slate-900">حساب مشتری جدید</h3>
-            <div className="space-y-6">
-              <input type="text" className="w-full p-5 bg-slate-50 rounded-2xl font-bold border border-slate-100 outline-none" placeholder="نام مشتری" value={newCustomer.name} onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})} />
-              <input type="text" className="w-full p-5 bg-slate-50 rounded-2xl font-black border border-slate-100 outline-none" placeholder="کد دفتری" value={newCustomer.code} onChange={(e) => setNewCustomer({...newCustomer, code: e.target.value})} />
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4 text-right">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+            <h3 className="text-2xl font-black mb-8 text-slate-900 text-right">افتتاح دفتر حساب جدید</h3>
+            <div className="space-y-6 text-right">
+              <div className="space-y-2 text-right">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1 text-right">نام مشتری</label>
+                <input type="text" className="w-full p-5 bg-slate-50 rounded-2xl font-bold border border-slate-100 outline-none focus:bg-white text-right" placeholder="مثلاً: احمد محمدی" value={newCustomer.name} onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})} />
+              </div>
+              <div className="space-y-2 text-right">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1 text-right">کد شناسایی</label>
+                <input type="text" className="w-full p-5 bg-slate-50 rounded-2xl font-black border border-slate-100 outline-none focus:bg-white text-right" placeholder="1001" value={newCustomer.code} onChange={(e) => setNewCustomer({...newCustomer, code: e.target.value})} />
+              </div>
               <button onClick={() => {
                 if(!newCustomer.name) return;
                 const customer: Customer = { id: Math.random().toString(36).substr(2, 9), code: newCustomer.code || (customers.length + 101).toString(), name: newCustomer.name, phones: [], status: 'active', notes: '', balances: {} };
                 setCustomers(prev => [...prev, customer]);
                 setShowAddModal(false);
                 setNewCustomer({name: '', code: ''});
-              }} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black shadow-lg">ایجاد دفتر حساب</button>
+              }} className="w-full bg-blue-600 text-white py-6 rounded-2xl font-black text-lg shadow-xl hover:bg-blue-700 transition-all active:scale-95">ثبت و ایجاد دفتر</button>
             </div>
           </div>
         </div>

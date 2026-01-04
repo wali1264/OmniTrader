@@ -1,4 +1,3 @@
-
 export enum TransactionType {
   BOARD = 'برد', 
   RESID = 'رسید', 
@@ -76,9 +75,9 @@ export interface GlobalRate {
 }
 
 export const SUPPORTED_CURRENCIES = [
-  { code: 'AFN', label: 'افغانی', symbol: '؋' },
-  { code: 'USD', label: 'دالر آمریکا', symbol: '$' },
-  { code: 'IRT_BANK', label: 'تومان بانکی', symbol: 'T' },
-  { code: 'PKR', label: 'کلدار پاکستان', symbol: '₨' },
-  { code: 'EUR', label: 'یورو', symbol: '€' }
+  { code: 'USD', label: 'USD', symbol: '$' },
+  { code: 'AFN', label: 'AFN', symbol: '؋' },
+  { code: 'IRT_CASH', label: 'IRT Cash', symbol: '🇮🇷' },
+  { code: 'IRT_BANK', label: 'IRT Bank', symbol: '💳' },
+  { code: 'PKR', label: 'PKR', symbol: '🇵🇰' }
 ];
