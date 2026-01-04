@@ -128,8 +128,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
                 <Sparkles size={16} className="text-blue-200 animate-pulse" />
                 <h3 className="text-[10px] font-black uppercase tracking-widest text-blue-100">Market Rate (USD/AFN)</h3>
               </div>
-              <div className="flex items-baseline gap-2">
-                <h4 className="text-4xl font-black">
+              <div className="flex items-baseline gap-2 tabular-nums">
+                <h4 className="text-3xl font-black">
                   {globalRates.find(r => r.currencyCode === 'USD')?.rateToAfn || '70.5'}
                 </h4>
                 <span className="text-sm font-bold opacity-70">؋</span>
@@ -174,7 +174,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
                  <p className="text-base font-black text-slate-800">{account.bankName}</p>
                  <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase">{account.currency}</span>
               </div>
-              <p className="text-3xl font-black text-slate-900">{account.currentBalance.toLocaleString()}</p>
+              <p className="text-2xl font-black text-slate-900 tabular-nums">{account.currentBalance.toLocaleString()}</p>
               <p className="text-[10px] font-mono text-slate-400 mt-4 tracking-widest">{account.accountNumber}</p>
             </div>
           ))}
@@ -195,7 +195,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
             {SUPPORTED_CURRENCIES.map(curr => (
               <div key={curr.code} className="p-6 rounded-3xl bg-emerald-50/30 border border-emerald-50">
                 <p className="text-[10px] font-black text-emerald-600 uppercase mb-2 tracking-widest">{curr.code}</p>
-                <span className="text-xl font-black text-slate-800">{dailyStats.incoming[curr.code]?.toLocaleString() || '0'}</span>
+                <span className="text-lg font-black text-slate-800 tabular-nums">{dailyStats.incoming[curr.code]?.toLocaleString() || '0'}</span>
               </div>
             ))}
           </div>
@@ -210,7 +210,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
             {SUPPORTED_CURRENCIES.map(curr => (
               <div key={curr.code} className="p-6 rounded-3xl bg-rose-50/30 border border-rose-50">
                 <p className="text-[10px] font-black text-rose-600 uppercase mb-2 tracking-widest">{curr.code}</p>
-                <span className="text-xl font-black text-slate-800">{dailyStats.outgoing[curr.code]?.toLocaleString() || '0'}</span>
+                <span className="text-lg font-black text-slate-800 tabular-nums">{dailyStats.outgoing[curr.code]?.toLocaleString() || '0'}</span>
               </div>
             ))}
           </div>
@@ -257,9 +257,9 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, unit, icon, highlight
   <div className={`p-10 rounded-[3rem] shadow-sm border transition-all text-right hover:shadow-2xl hover:-translate-y-1 ${highlight ? 'bg-slate-900 text-white border-slate-900 shadow-slate-200' : 'bg-white border-slate-100 shadow-slate-100'}`}>
     <div className={`p-4 rounded-[1.5rem] mb-6 inline-block ${highlight ? 'bg-white/10' : 'bg-slate-50'}`}>{icon}</div>
     <p className="text-[10px] font-black uppercase tracking-widest mb-3 text-slate-400">{title}</p>
-    <div className="flex items-baseline gap-2 justify-end">
-      <h4 className="text-3xl font-black tracking-tight">{value}</h4>
-      <span className={`text-xs font-black uppercase ${highlight ? 'text-blue-400' : 'text-slate-400'}`}>{unit}</span>
+    <div className="flex items-baseline gap-2 justify-end tabular-nums">
+      <h4 className="text-2xl font-black tracking-tight">{value}</h4>
+      <span className={`text-[10px] font-black uppercase ${highlight ? 'text-blue-400' : 'text-slate-400'}`}>{unit}</span>
     </div>
   </div>
 );

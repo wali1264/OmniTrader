@@ -87,9 +87,6 @@ const App: React.FC = () => {
     else { setLoginError('نام کاربری یا رمز عبور اشتباه است.'); }
   };
 
-  /**
-   * نمایش برند به سبک لوکس و مدرن
-   */
   const LuxuriousBrand = ({ className, size = 'md' }: { className?: string, size?: 'sm' | 'md' | 'lg' }) => (
     <div className={`flex flex-col items-center justify-center select-none group transition-all duration-700 ${className}`}>
       <div className="flex items-center gap-3">
@@ -112,7 +109,6 @@ const App: React.FC = () => {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-['Vazirmatn'] relative overflow-hidden" dir="rtl">
-        {/* نورهای پس‌زمینه لوکس */}
         <div className="absolute top-1/4 -right-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full"></div>
         <div className="absolute bottom-1/4 -left-24 w-96 h-96 bg-indigo-600/10 blur-[120px] rounded-full"></div>
         
@@ -150,7 +146,6 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-['Vazirmatn'] relative" dir="rtl">
       
-      {/* Floating Corner Brand Display - More Discreet and Elegant */}
       <div className="fixed bottom-10 left-10 z-[100] pointer-events-none opacity-50 hover:opacity-100 transition-opacity">
         <LuxuriousBrand size="sm" className="items-start" />
       </div>
@@ -203,7 +198,9 @@ const App: React.FC = () => {
               <div className="flex items-center gap-6 border-r border-slate-100 pr-8">
                   <div className="text-left">
                     <p className="text-[9px] font-black text-slate-400 uppercase mb-1 tracking-widest">موجودی نقد (USD)</p>
-                    <p className="text-lg font-black text-emerald-600">{(stats.cashBox['USD'] || 0).toLocaleString()} <span className="text-[10px]">$</span></p>
+                    <p className="text-xl font-black text-emerald-600 leading-none tabular-nums">
+                      {(stats.cashBox['USD'] || 0).toLocaleString()} <span className="text-[10px]">$</span>
+                    </p>
                   </div>
               </div>
               <div className="flex items-center gap-4">
