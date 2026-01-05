@@ -1,7 +1,8 @@
+
 export enum TransactionType {
   BOARD = 'برد', 
-  RESID = 'رسید', 
-  EXCHANGE = 'تبادل' 
+  RESID = 'رسید',
+  EXCHANGE = 'تبادله'
 }
 
 export enum TransactionStatus {
@@ -33,30 +34,25 @@ export interface Customer {
 export interface Transaction {
   id: string;
   customerId?: string;
+  guestName?: string; 
   type: TransactionType;
   amount: number;
   currency: string;
-  targetCurrency?: string;
-  // Professional Exchange Fields
-  buyRate?: number;       // نرخی که با مشتری فیکس شده
-  sellRate?: number;      // نرخ فروش بازار (برای محاسبه سود)
-  fee?: number;           // کارمزد معامله
-  totalBuy?: number;      // مقدار پرداختی/کسری دفتری
-  totalSell?: number;     // ارزش واقعی مارکت
-  netProfit?: number;     // سود خالص نهایی
-  
-  exchangeRate?: number;  // Deprecated - kept for compatibility
-  convertedAmount?: number;
   description: string;
   timestamp: number;
   status: TransactionStatus;
   isBank: boolean;
   bankAccountId?: string;
+  // Bank & Tracking Metadata
+  trackingId?: string;
   bankFrom?: string;
   bankTo?: string;
   cardLastFour?: string;
-  trackingId?: string;
-  profit?: number;
+  // Exchange Metadata
+  targetCurrency?: string;
+  exchangeRate?: number;
+  convertedAmount?: number;
+  netProfit?: number;
 }
 
 export interface BankAccount {
@@ -75,9 +71,9 @@ export interface GlobalRate {
 }
 
 export const SUPPORTED_CURRENCIES = [
-  { code: 'USD', label: 'USD', symbol: '$' },
-  { code: 'AFN', label: 'AFN', symbol: '؋' },
-  { code: 'IRT_CASH', label: 'IRT Cash', symbol: '🇮🇷' },
-  { code: 'IRT_BANK', label: 'IRT Bank', symbol: '💳' },
-  { code: 'PKR', label: 'PKR', symbol: '🇵🇰' }
+  { code: 'AFN', label: 'افغانی', symbol: '؋' },
+  { code: 'USD', label: 'دالر', symbol: '$' },
+  { code: 'IRT_CASH', label: 'تومان نقد', symbol: '💵' },
+  { code: 'IRT_BANK', label: 'تومان بانک', symbol: '💳' },
+  { code: 'PKR', label: 'کلدار', symbol: '₨' }
 ];

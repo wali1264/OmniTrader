@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Landmark, Plus, ArrowDownLeft, ArrowUpRight, 
   Search, X, CreditCard, ArrowLeft, 
-  ChevronRight, List, CheckCircle, Clock, UserPlus, HelpCircle
+  ChevronRight, List, CheckCircle, Clock, UserPlus, HelpCircle, ArrowRightLeft, Save, Percent
 } from 'lucide-react';
 import { BankAccount, Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from '../types';
 
@@ -18,6 +18,7 @@ interface BankManagerProps {
 const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts, transactions, setTransactions, customers }) => {
   const [activeBank, setActiveBank] = useState<BankAccount | null>(null);
   const [showAddBankModal, setShowAddBankModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'ops' | 'pending'>('ops');
   const [activeMode, setActiveMode] = useState<TransactionType>(TransactionType.RESID);
   const [searchCustomer, setSearchCustomer] = useState('');
@@ -25,6 +26,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
   const [pendingSearch, setPendingSearch] = useState('');
   
   const [newBank, setNewBank] = useState({ name: '', number: '', balance: 0, currency: 'IRT_BANK' });
+  const [transferData, setTransferData] = useState({ sourceBankId: '', targetBankId: '', amount: 0, commissionPercent: 0, description: '' });
   const [formData, setFormData] = useState({
     amount: 0,
     customerId: '',
@@ -43,8 +45,12 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
   }, [activeBank, transactions]);
 
   const filteredCustomers = useMemo(() => {
-    if (searchCustomer.length < 2) return [];
-    return customers.filter(c => c.name.includes(searchCustomer) || c.code.includes(searchCustomer));
+    const term = searchCustomer.trim();
+    if (!term) return [];
+    return customers.filter(c => 
+      c.name.includes(term) || 
+      c.code.includes(term)
+    );
   }, [customers, searchCustomer]);
 
   const pendingDeposits = useMemo(() => {
@@ -69,6 +75,65 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     setBankAccounts(prev => [...prev, account]);
     setShowAddBankModal(false);
     setNewBank({ name: '', number: '', balance: 0, currency: 'IRT_BANK' });
+  };
+
+  const handleTransfer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferData.sourceBankId || !transferData.targetBankId || transferData.amount <= 0) return;
+    if (transferData.sourceBankId === transferData.targetBankId) {
+      alert("حساب مبدأ و مقصد نمی‌تواند یکی باشد.");
+      return;
+    }
+    
+    const sourceBank = bankAccounts.find(b => b.id === transferData.sourceBankId);
+    const targetBank = bankAccounts.find(b => b.id === transferData.targetBankId);
+    
+    if (!sourceBank || !targetBank) return;
+
+    const timestamp = Date.now();
+    const transferGroupId = Math.random().toString(36).substr(2, 5).toUpperCase();
+    
+    const commissionAmount = (transferData.amount * transferData.commissionPercent) / 100;
+    const netAmount = transferData.amount - commissionAmount;
+
+    const sourceTransaction: Transaction = {
+      id: `TX-OUT-${transferGroupId}`,
+      type: TransactionType.BOARD,
+      amount: transferData.amount,
+      currency: sourceBank.currency,
+      bankAccountId: sourceBank.id,
+      isBank: true,
+      description: `[انتقال بین بانکی] به حساب ${targetBank.bankName} - مبلغ اصلی: ${transferData.amount.toLocaleString()} - کمیشن (${transferData.commissionPercent}%): ${commissionAmount.toLocaleString()} - ${transferData.description}`,
+      timestamp: timestamp,
+      status: TransactionStatus.APPROVED
+    };
+
+    const targetTransaction: Transaction = {
+      id: `TX-IN-${transferGroupId}`,
+      type: TransactionType.RESID,
+      amount: netAmount,
+      currency: targetBank.currency,
+      bankAccountId: targetBank.id,
+      isBank: true,
+      description: `[انتقال بین بانکی] از حساب ${sourceBank.bankName} - کمیشن کسر شده: ${commissionAmount.toLocaleString()} (${transferData.commissionPercent}%) - ${transferData.description}`,
+      timestamp: timestamp + 1,
+      status: TransactionStatus.APPROVED
+    };
+
+    setTransactions(prev => [...prev, sourceTransaction, targetTransaction]);
+    setShowTransferModal(false);
+    alert("انتقال با موفقیت انجام شد.");
+  };
+
+  const openTransferModal = () => {
+    setTransferData({
+      sourceBankId: activeBank?.id || '',
+      targetBankId: '',
+      amount: 0,
+      commissionPercent: 0,
+      description: ''
+    });
+    setShowTransferModal(true);
   };
 
   const handleSubmitTransaction = (e: React.FormEvent, isPending: boolean = false) => {
@@ -114,6 +179,9 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     setSearchCustomer('');
     alert(`مبلغ با موفقیت به حساب ${customer.name} منتقل شد.`);
   };
+
+  const modalCommissionAmount = (transferData.amount * transferData.commissionPercent) / 100;
+  const modalNetAmount = transferData.amount - modalCommissionAmount;
 
   if (!activeBank) {
     return (
@@ -204,6 +272,9 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                </div>
             </div>
             <div className="flex items-center gap-4">
+               <button onClick={openTransferModal} className="bg-slate-50 text-slate-900 px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 border border-slate-100 hover:bg-slate-100 transition-all">
+                  <ArrowRightLeft size={16} /> انتقال بین بانکی
+               </button>
                <div className="bg-amber-50 px-6 py-4 rounded-2xl border border-amber-100 text-center">
                   <p className="text-[9px] font-black text-amber-600 uppercase mb-1">واریزی‌های مجهول:</p>
                   <p className="text-xl font-black text-amber-700">{pendingDeposits.length} سند</p>
@@ -367,6 +438,107 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
          </div>
       </div>
 
+      {/* مودال انتقال بین بانکی */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+           <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in text-right">
+              <div className="flex justify-between items-center mb-8 border-b border-slate-50 pb-4">
+                 <div className="flex items-center gap-3">
+                    <div className="p-3 bg-blue-100 text-blue-600 rounded-2xl"><ArrowRightLeft size={24} /></div>
+                    <h3 className="text-xl font-black text-slate-900">انتقال وجه بین بانکی</h3>
+                 </div>
+                 <button onClick={() => setShowTransferModal(false)} className="p-2 hover:bg-slate-50 rounded-full transition-all text-slate-400"><X size={20}/></button>
+              </div>
+
+              <form onSubmit={handleTransfer} className="space-y-6">
+                 <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">حساب مبدأ (فرستنده)</label>
+                    <select 
+                       className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
+                       value={transferData.sourceBankId}
+                       onChange={e => setTransferData({...transferData, sourceBankId: e.target.value})}
+                       required
+                    >
+                       <option value="">-- انتخاب بانک مبدأ --</option>
+                       {bankAccounts.map(b => (
+                          <option key={b.id} value={b.id}>{b.bankName} - {b.accountNumber} ({b.currency})</option>
+                       ))}
+                    </select>
+                 </div>
+
+                 <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mr-1">حساب مقصد (گیرنده)</label>
+                    <select 
+                       className="w-full p-4 bg-white border border-blue-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
+                       value={transferData.targetBankId}
+                       onChange={e => setTransferData({...transferData, targetBankId: e.target.value})}
+                       required
+                    >
+                       <option value="">-- انتخاب بانک مقصد --</option>
+                       {bankAccounts.map(b => (
+                          <option key={b.id} value={b.id}>{b.bankName} - {b.accountNumber} ({b.currency})</option>
+                       ))}
+                    </select>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ انتقال</label>
+                        <input 
+                        type="number" 
+                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-right"
+                        placeholder="0"
+                        value={transferData.amount || ''}
+                        onChange={e => setTransferData({...transferData, amount: Number(e.target.value)})}
+                        required
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mr-1 flex items-center gap-1">
+                            <Percent size={12} /> فیصدی کمیشن
+                        </label>
+                        <input 
+                        type="number" 
+                        step="0.01"
+                        className="w-full p-4 bg-blue-50/50 border border-blue-100 rounded-xl font-black text-lg outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-center"
+                        placeholder="0.00"
+                        value={transferData.commissionPercent || ''}
+                        onChange={e => setTransferData({...transferData, commissionPercent: Number(e.target.value)})}
+                        />
+                    </div>
+                 </div>
+
+                 {(transferData.amount > 0 && transferData.commissionPercent > 0) && (
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+                        <div className="flex justify-between text-[10px] font-bold">
+                            <span className="text-slate-400 uppercase">مبلغ کمیشن:</span>
+                            <span className="text-rose-600 tabular-nums">{modalCommissionAmount.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] font-black">
+                            <span className="text-slate-900 uppercase">مبلغ خالص دریافتی مقصد:</span>
+                            <span className="text-emerald-600 tabular-nums">{modalNetAmount.toLocaleString()}</span>
+                        </div>
+                    </div>
+                 )}
+
+                 <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح انتقال (بابت...)</label>
+                    <textarea 
+                       className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold text-xs outline-none focus:bg-white transition-all text-right"
+                       placeholder="مثلاً: بابت جابجایی نقدینگی"
+                       value={transferData.description}
+                       onChange={e => setTransferData({...transferData, description: e.target.value})}
+                    />
+                 </div>
+
+                 <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-blue-900/10 flex items-center justify-center gap-3 hover:bg-blue-700 transition-all">
+                    <Save size={20} /> تائید و جابجایی وجه
+                 </button>
+              </form>
+           </div>
+        </div>
+      )}
+
       {showAssignModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4 text-right">
           <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in">
@@ -393,7 +565,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                   <ChevronRight size={24} className="opacity-0 group-hover:opacity-100 transition-all" />
                 </button>
               ))}
-              {searchCustomer.length >= 2 && filteredCustomers.length === 0 && (
+              {searchCustomer.trim() !== '' && filteredCustomers.length === 0 && (
                 <div className="py-20 text-center text-slate-300 italic">مشتری یافت نشد.</div>
               )}
             </div>

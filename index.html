@@ -11,30 +11,45 @@
         body {
             font-family: 'Vazirmatn', sans-serif;
             background-color: #f8fafc;
-            /* اعداد را تراز و هم‌اندازه نشان می‌دهد تا در ستون‌ها جابجا نشوند */
+            /* فعال‌سازی اعداد هم‌عرض برای جلوگیری از جابجایی در ستون‌ها */
             font-variant-numeric: tabular-nums;
+            -moz-font-feature-settings: "tnum";
+            -webkit-font-feature-settings: "tnum";
+            font-feature-settings: "tnum";
         }
-        /* کلاس کمکی برای اعداد خرد و تراز */
-        .num-xl { font-size: 1.75rem; line-height: 2rem; font-weight: 900; }
-        .num-lg { font-size: 1.25rem; line-height: 1.75rem; font-weight: 900; }
-        .num-sm { font-size: 0.875rem; line-height: 1.25rem; font-weight: 700; }
 
-        /* Custom scrollbar for better aesthetics */
+        /* کلاس‌های اختصاصی برای کنترل دقیق اعداد */
+        .tnum { font-variant-numeric: tabular-nums; }
+        
+        /* محدود کردن عرض محتوا برای جلوگیری از کشیدگی بیش از حد در مانیتورهای عریض */
+        .app-container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* اسکرول‌بار ظریف‌تر */
         ::-webkit-scrollbar {
-            width: 6px;
+            width: 5px;
+            height: 5px;
         }
         ::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
+            background: #e2e8f0;
             border-radius: 10px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
+            background: #cbd5e1;
         }
-        .custom-scrollbar::-webkit-scrollbar {
-            width: 4px;
+
+        /* انیمیشن ورود نرم */
+        .fade-entry {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 <script type="importmap">

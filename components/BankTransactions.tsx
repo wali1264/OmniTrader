@@ -29,10 +29,11 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
   });
 
   const filteredCustomers = useMemo(() => {
-    if (!searchCustomer || searchCustomer.length < 2) return [];
+    const term = searchCustomer.trim();
+    if (!term) return [];
     return customers.filter(c => 
-      c.name.includes(searchCustomer) || 
-      c.code.includes(searchCustomer)
+      c.name.includes(term) || 
+      c.code.includes(term)
     );
   }, [customers, searchCustomer]);
 
@@ -43,7 +44,6 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
       .filter(t => t.isBank)
       .filter(t => {
         const customer = customers.find(c => c.id === t.customerId);
-        // Fixed: mapped sourceAccount and destinationAccount to bankFrom and bankTo from Transaction interface
         return !historySearch || 
           customer?.name.includes(historySearch) ||
           t.amount.toString().includes(historySearch) ||
@@ -62,7 +62,6 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
       return;
     }
 
-    // Fixed: Map sourceAccount and destinationAccount to bankFrom and bankTo from Transaction interface
     const transaction: Transaction = {
       id: 'BANK-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
       customerId: formData.customerId,

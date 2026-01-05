@@ -49,6 +49,7 @@ const Approvals: React.FC<ApprovalsProps> = ({ transactions, setTransactions, cu
         ) : (
           pendingTransactions.map(t => {
             const customer = customers.find(c => c.id === t.customerId);
+            const displayName = customer?.name || t.guestName || 'مشتری آزاد';
             return (
               <div key={t.id} className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col xl:flex-row gap-10 relative overflow-hidden group">
                 <div className="absolute left-0 top-0 bottom-0 w-3 bg-emerald-600"></div>
@@ -56,9 +57,9 @@ const Approvals: React.FC<ApprovalsProps> = ({ transactions, setTransactions, cu
                   <div className="flex items-center gap-6">
                     <div className="w-16 h-16 rounded-[1.5rem] bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-2xl shadow-lg">{t.type === TransactionType.RESID ? '+' : '-'}</div>
                     <div>
-                      <h4 className="text-xl font-black text-slate-900">{customer?.name || 'مشتری آزاد'}</h4>
+                      <h4 className="text-xl font-black text-slate-900">{displayName}</h4>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className="font-black text-2xl text-slate-900">{t.amount.toLocaleString()}</span>
+                        <span className="font-black text-2xl text-slate-900 tabular-nums">{t.amount.toLocaleString()}</span>
                         <span className="text-sm font-black text-slate-400 uppercase">{t.currency}</span>
                       </div>
                     </div>

@@ -1,11 +1,12 @@
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { 
   Download, Upload, ShieldCheck, Database, 
   AlertTriangle, CheckCircle2, Users, 
-  Lock, Key, UserPlus, Trash2, Save, Building, Eye, EyeOff, User as UserIcon
+  Lock, Key, UserPlus, Trash2, Save, Building, Eye, EyeOff, User as UserIcon,
+  Receipt, Plus, Wallet
 } from 'lucide-react';
-import { Customer, Transaction, User, UserRole } from '../types';
+import { Customer, Transaction, User, UserRole, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus } from '../types';
 
 interface SettingsProps {
   users: User[];
@@ -26,7 +27,7 @@ const Settings: React.FC<SettingsProps> = ({
   shopName, setShopName
 }) => {
   const isAdmin = currentUser?.role === 'admin';
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup'>(isAdmin ? 'general' : 'security');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup' | 'expenses'>(isAdmin ? 'general' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
   
@@ -40,6 +41,9 @@ const Settings: React.FC<SettingsProps> = ({
 
   // User Management States
   const [newUser, setNewUser] = useState({ fullName: '', username: '', password: '', role: 'operator' as UserRole });
+
+  // Expenses States
+  const [expenseData, setExpenseData] = useState({ amount: 0, currency: 'AFN', description: '' });
 
   useEffect(() => {
     if (status.type !== 'none') {
@@ -114,6 +118,35 @@ const Settings: React.FC<SettingsProps> = ({
     reader.readAsText(file);
   };
 
+  const handleAddExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (expenseData.amount <= 0 || !expenseData.description) {
+      setStatus({ type: 'error', message: 'لطفاً مبلغ و شرح مصرف را وارد کنید.' });
+      return;
+    }
+
+    const newExpenseTransaction: Transaction = {
+      id: 'EXP-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
+      type: TransactionType.BOARD,
+      amount: expenseData.amount,
+      currency: expenseData.currency,
+      description: `[مصرف] ${expenseData.description}`,
+      timestamp: Date.now(),
+      status: TransactionStatus.APPROVED,
+      isBank: false
+    };
+
+    setTransactions(prev => [...prev, newExpenseTransaction]);
+    setExpenseData({ amount: 0, currency: 'AFN', description: '' });
+    setStatus({ type: 'success', message: 'هزینه با موفقیت در حساب مصارف ثبت شد.' });
+  };
+
+  const expenseHistory = useMemo(() => {
+    return transactions
+      .filter(t => t.description.startsWith('[مصرف]'))
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [transactions]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
       {/* Toast Notification */}
@@ -125,16 +158,19 @@ const Settings: React.FC<SettingsProps> = ({
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
+      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-3xl mx-auto overflow-x-auto scrollbar-hide">
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('general')} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>تنظیمات عمومی</button>
+          <button onClick={() => setActiveSubTab('general')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>تنظیمات عمومی</button>
         )}
-        <button onClick={() => setActiveSubTab('security')} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>امنیت</button>
+        <button onClick={() => setActiveSubTab('security')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>امنیت</button>
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('users')} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>کاربران</button>
+          <button onClick={() => setActiveSubTab('expenses')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>مصارف شخصی و دفتر</button>
         )}
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 rounded-xl font-bold text-xs transition-all ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>پشتیبان‌گیری</button>
+          <button onClick={() => setActiveSubTab('users')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>کاربران</button>
+        )}
+        {isAdmin && (
+          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>پشتیبان‌گیری</button>
         )}
       </div>
 
@@ -152,6 +188,76 @@ const Settings: React.FC<SettingsProps> = ({
             <button onClick={handleSaveShopName} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
               <Save size={18} /> ذخیره تغییرات
             </button>
+          </div>
+        )}
+
+        {activeSubTab === 'expenses' && isAdmin && (
+          <div className="space-y-10 animate-in zoom-in duration-300">
+            <div className="flex items-center gap-3 mb-6 text-right">
+              <Receipt className="text-rose-600" size={24} />
+              <h3 className="text-xl font-black text-slate-900">ثبت مصارف شخصی و دفتر</h3>
+            </div>
+            
+            <form onSubmit={handleAddExpense} className="max-w-xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
+               <div className="space-y-1.5 md:col-span-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ هزینه</label>
+                  <div className="flex gap-2">
+                    <input type="number" className="flex-1 p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none" placeholder="0" value={expenseData.amount || ''} onChange={e => setExpenseData({...expenseData, amount: Number(e.target.value)})} />
+                    <select className="w-24 p-3 bg-slate-100 rounded-xl font-black text-xs outline-none" value={expenseData.currency} onChange={e => setExpenseData({...expenseData, currency: e.target.value})}>
+                      {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                    </select>
+                  </div>
+               </div>
+               <div className="space-y-1.5 md:col-span-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح مصرف (توضیحات)</label>
+                  <input type="text" className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none" placeholder="مثلاً: اجاره، برق، کرایه..." value={expenseData.description} onChange={e => setExpenseData({...expenseData, description: e.target.value})} />
+               </div>
+               <div className="md:col-span-2 pt-2">
+                  <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black text-sm shadow-lg shadow-rose-100 flex items-center justify-center gap-2 hover:bg-rose-700 transition-all">
+                    <Plus size={18} /> ثبت در دفتر مصارف
+                  </button>
+               </div>
+            </form>
+
+            <hr className="border-slate-50" />
+
+            <div className="space-y-4">
+               <h4 className="text-sm font-black text-slate-800 text-right">تاریخچه مصارف اخیر</h4>
+               <div className="overflow-x-auto">
+                 <table className="w-full text-right text-xs">
+                   <thead className="bg-slate-50 text-slate-400">
+                     <tr>
+                       <th className="p-4 font-black">تاریخ</th>
+                       <th className="p-4 font-black">شرح مصرف</th>
+                       <th className="p-4 font-black">مبلغ</th>
+                       <th className="p-4 font-black text-center">عملیات</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-50">
+                     {expenseHistory.map(exp => (
+                       <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
+                         <td className="p-4 text-slate-400 font-medium tabular-nums">{new Date(exp.timestamp).toLocaleDateString('fa-IR')}</td>
+                         <td className="p-4 font-black text-slate-700">{exp.description.replace('[مصرف] ', '')}</td>
+                         <td className="p-4 font-black text-rose-600 tabular-nums">{exp.amount.toLocaleString()} <span className="text-[9px] opacity-50">{exp.currency}</span></td>
+                         <td className="p-4 text-center">
+                            <button onClick={() => {
+                              if(confirm('آیا این رکورد مصرف حذف شود؟')) {
+                                setTransactions(prev => prev.filter(t => t.id !== exp.id));
+                                setStatus({ type: 'success', message: 'رکورد هزینه حذف شد.' });
+                              }
+                            }} className="p-2 text-rose-300 hover:text-rose-600 transition-colors">
+                               <Trash2 size={16} />
+                            </button>
+                         </td>
+                       </tr>
+                     ))}
+                     {expenseHistory.length === 0 && (
+                       <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-bold">هنوز هیچ مصرفی ثبت نشده است.</td></tr>
+                     )}
+                   </tbody>
+                 </table>
+               </div>
+            </div>
           </div>
         )}
 

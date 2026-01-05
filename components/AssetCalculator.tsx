@@ -1,9 +1,9 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   PieChart, TrendingUp, Wallet, Landmark, 
   ArrowUpRight, ArrowDownLeft, ShieldCheck, 
-  Target, Calculator, Coins, DollarSign
+  Target, Calculator, Coins, DollarSign, Plus, X, Save, AlertCircle, TrendingDown
 } from 'lucide-react';
 import { Customer, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
@@ -17,6 +17,29 @@ interface AssetCalculatorProps {
 
 const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, globalRates }) => {
   const currentUsdRate = globalRates.find(r => r.currencyCode === 'USD')?.rateToAfn || 70.5;
+  
+  // State for Initial Assets (Capital)
+  const [initialAssets, setInitialAssets] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('s_initial_assets');
+    return saved ? JSON.parse(saved) : {};
+  });
+  
+  const [showInitialModal, setShowInitialModal] = useState(false);
+  const [tempInitial, setTempInitial] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    localStorage.setItem('s_initial_assets', JSON.stringify(initialAssets));
+  }, [initialAssets]);
+
+  const openInitialModal = () => {
+    setTempInitial({ ...initialAssets });
+    setShowInitialModal(true);
+  };
+
+  const saveInitialAssets = () => {
+    setInitialAssets({ ...tempInitial });
+    setShowInitialModal(false);
+  };
 
   const assetDetails = useMemo(() => {
     const liquidByCurrency: Record<string, number> = {};
@@ -34,63 +57,108 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
       payablesByCurrency[curr.code] = negative;
     });
 
-    const calculateGrandTotal = (mapping: Record<string, number>) => {
+    const calculateInAfn = (mapping: Record<string, number>) => {
         let totalAfn = 0;
         SUPPORTED_CURRENCIES.forEach(curr => {
             const amount = mapping[curr.code] || 0;
             if (curr.code === 'AFN') totalAfn += amount;
             else if (curr.code === 'USD') totalAfn += amount * currentUsdRate;
-            else totalAfn += amount * (currentUsdRate / 10);
+            else totalAfn += amount * (currentUsdRate / 10); // Approximation for IRT/PKR to AFN conversion
         });
         return totalAfn;
     };
 
-    const totalLiquidAfn = calculateGrandTotal(liquidByCurrency);
-    const totalReceivablesAfn = calculateGrandTotal(receivablesByCurrency);
-    const totalPayablesAfn = calculateGrandTotal(payablesByCurrency);
+    const totalLiquidAfn = calculateInAfn(liquidByCurrency);
+    const totalReceivablesAfn = calculateInAfn(receivablesByCurrency);
+    const totalPayablesAfn = calculateInAfn(payablesByCurrency);
+    const totalInitialAfn = calculateInAfn(initialAssets);
+
+    const netWorthAfn = (totalLiquidAfn + totalReceivablesAfn) - totalPayablesAfn;
+    const totalGrowth = netWorthAfn - totalInitialAfn;
 
     return {
       totalLiquidAfn,
       totalAssetsAfn: totalLiquidAfn + totalReceivablesAfn,
-      netWorthAfn: (totalLiquidAfn + totalReceivablesAfn) - totalPayablesAfn,
+      netWorthAfn,
+      totalInitialAfn,
+      totalGrowth,
       liquidByCurrency, receivablesByCurrency, payablesByCurrency
     };
-  }, [customers, stats, currentUsdRate]);
+  }, [customers, stats, currentUsdRate, initialAssets]);
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 pb-24">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <AssetCard title="کل دارائی‌ها (Gross)" value={assetDetails.totalAssetsAfn} unit="AFN" icon={<Calculator size={28} />} gradient="from-indigo-600 to-blue-700" description="نقدینگی صندوق + مطالبات" />
-        <AssetCard title="نقدینگی صندوق" value={assetDetails.totalLiquidAfn} unit="AFN" icon={<Wallet size={28} />} gradient="from-emerald-500 to-teal-600" description="کل پول نقد موجود در گاوصندوق" />
-        <AssetCard title="دارائی خالص (Equity)" value={assetDetails.netWorthAfn} unit="AFN" icon={<ShieldCheck size={28} />} gradient="from-slate-800 to-slate-900" description="سرمایه صرافی پس از کسر بدهی‌ها" highlight />
+      <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-slate-900">تراز کل دارائی‌ها و سرمایه</h2>
+          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Equity & Net Asset Valuation</p>
+        </div>
+        <button 
+          onClick={openInitialModal}
+          className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-xs flex items-center gap-2 hover:bg-black transition-all shadow-lg"
+        >
+          <Plus size={16} /> اضافه کردن دارائی اولیه (سرمایه)
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <AssetCard title="کل دارائی‌ها (Gross)" value={assetDetails.totalAssetsAfn} unit="AFN" icon={<Calculator size={24} />} gradient="from-indigo-600 to-blue-700" description="نقدینگی صندوق + تمام مطالبات" />
+        <AssetCard title="سرمایه اولیه ثبت شده" value={assetDetails.totalInitialAfn} unit="AFN" icon={<Coins size={24} />} gradient="from-amber-500 to-orange-600" description="مجموع کل سرمایه گذاری اولیه" />
+        <AssetCard title="دارائی خالص فعلی (Equity)" value={assetDetails.netWorthAfn} unit="AFN" icon={<ShieldCheck size={24} />} gradient="from-slate-800 to-slate-900" description="سرمایه پس از کسر تمام بدهی‌ها" highlight />
+        <AssetCard 
+          title="میزان رشد / سود کل" 
+          value={assetDetails.totalGrowth} 
+          unit="AFN" 
+          icon={assetDetails.totalGrowth >= 0 ? <TrendingUp size={24} /> : <TrendingDown size={24} />} 
+          gradient={assetDetails.totalGrowth >= 0 ? "from-emerald-500 to-teal-600" : "from-rose-500 to-red-600"} 
+          description="تفاضل دارائی خالص از سرمایه اولیه" 
+        />
       </div>
 
       <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-8 bg-slate-50/30 border-b border-slate-50"><h3 className="text-xl font-black text-slate-900">توازن دارائی به تفکیک واحد پول</h3></div>
+        <div className="p-8 bg-slate-50/30 border-b border-slate-50 flex justify-between items-center">
+          <h3 className="text-xl font-black text-slate-900">توازن دارائی به تفکیک واحد پول</h3>
+          <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black">
+             <AlertCircle size={14} /> نرخ تبدیل دالر: {currentUsdRate} AFN
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-right text-sm">
             <thead>
               <tr className="text-slate-400 border-b border-slate-50">
                 <th className="py-6 px-10 font-black text-[10px] uppercase">واحد ارز</th>
-                <th className="py-6 px-4 font-black text-[10px] uppercase">موجودی صندوق</th>
+                <th className="py-6 px-4 font-black text-[10px] uppercase">سرمایه اولیه</th>
+                <th className="py-6 px-4 font-black text-[10px] uppercase">موجودی فعلی صندوق</th>
                 <th className="py-6 px-4 font-black text-[10px] uppercase text-emerald-600">طلب از مشتری</th>
                 <th className="py-6 px-4 font-black text-[10px] uppercase text-rose-600">بدهی به مشتری</th>
-                <th className="py-6 px-10 font-black text-[10px] uppercase text-left">تراز نهایی</th>
+                <th className="py-6 px-10 font-black text-[10px] uppercase text-left">تراز خالص فعلی</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {SUPPORTED_CURRENCIES.map(curr => {
+                const initial = initialAssets[curr.code] || 0;
                 const liquid = assetDetails.liquidByCurrency[curr.code] || 0;
                 const rec = assetDetails.receivablesByCurrency[curr.code] || 0;
                 const pay = assetDetails.payablesByCurrency[curr.code] || 0;
                 const net = (liquid + rec) - pay;
+                const growth = net - initial;
+                
                 return (
-                  <tr key={curr.code} className="hover:bg-slate-50/50 group">
-                    <td className="py-8 px-10"><p className="font-black text-slate-800">{curr.label}</p></td>
-                    <td className="py-8 px-4 font-black text-slate-700">{liquid.toLocaleString()}</td>
-                    <td className="py-8 px-4 font-black text-emerald-600">{rec.toLocaleString()}</td>
-                    <td className="py-8 px-4 font-black text-rose-500">{pay.toLocaleString()}</td>
-                    <td className="py-8 px-10 text-left"><span className={`text-lg font-black ${net >= 0 ? 'text-blue-600' : 'text-rose-700'}`}>{net.toLocaleString()}</span></td>
+                  <tr key={curr.code} className="hover:bg-slate-50/50 group transition-all">
+                    <td className="py-8 px-10">
+                      <p className="font-black text-slate-800">{curr.label}</p>
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">{curr.code}</p>
+                    </td>
+                    <td className="py-8 px-4 font-black text-slate-400 tabular-nums">{initial.toLocaleString()}</td>
+                    <td className="py-8 px-4 font-black text-slate-700 tabular-nums">{liquid.toLocaleString()}</td>
+                    <td className="py-8 px-4 font-black text-emerald-600 tabular-nums">{rec.toLocaleString()}</td>
+                    <td className="py-8 px-4 font-black text-rose-500 tabular-nums">{pay.toLocaleString()}</td>
+                    <td className="py-8 px-10 text-left">
+                      <p className={`text-lg font-black tabular-nums ${net >= 0 ? 'text-blue-600' : 'text-rose-700'}`}>{net.toLocaleString()}</p>
+                      <p className={`text-[9px] font-black mt-1 ${growth >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
+                        {growth >= 0 ? '+' : ''}{growth.toLocaleString()} (رشد)
+                      </p>
+                    </td>
                   </tr>
                 );
               })}
@@ -98,17 +166,64 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
           </table>
         </div>
       </div>
+
+      {/* Modal for setting initial assets */}
+      {showInitialModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in text-right">
+             <div className="flex justify-between items-center mb-8 border-b border-slate-50 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-100 text-amber-600 rounded-xl"><Coins size={20} /></div>
+                  <h3 className="text-xl font-black text-slate-900">ثبت دارائی اولیه صرافی</h3>
+                </div>
+                <button onClick={() => setShowInitialModal(false)} className="p-2 hover:bg-slate-50 rounded-full transition-all text-slate-400"><X size={20}/></button>
+             </div>
+             
+             <p className="text-xs text-slate-500 font-medium mb-6 leading-relaxed">
+               مقادیر سرمایه‌ای که در روز شروع صرافی در صندوق یا به عنوان طلب وجود داشته است را اینجا وارد کنید تا میزان سود و رشد صرافی به درستی محاسبه شود.
+             </p>
+
+             <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {SUPPORTED_CURRENCIES.map(curr => (
+                  <div key={curr.code} className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">سرمایه اولیه ({curr.label})</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none focus:ring-4 focus:ring-amber-500/10 transition-all text-right pr-4 pl-12" 
+                        placeholder="0"
+                        value={tempInitial[curr.code] || ''} 
+                        onChange={e => setTempInitial({...tempInitial, [curr.code]: Number(e.target.value)})} 
+                      />
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">{curr.code}</span>
+                    </div>
+                  </div>
+                ))}
+             </div>
+
+             <div className="flex gap-4 mt-10">
+                <button onClick={saveInitialAssets} className="flex-1 bg-amber-600 text-white py-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-900/10 hover:bg-amber-700 transition-all">
+                   <Save size={18} /> ذخیره و بروزرسانی تراز
+                </button>
+                <button onClick={() => setShowInitialModal(false)} className="px-6 py-4 bg-slate-100 text-slate-500 rounded-xl font-black text-sm">لغو</button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 const AssetCard = ({ title, value, unit, icon, gradient, description, highlight }: any) => (
-  <div className={`p-10 rounded-[3.5rem] shadow-xl text-white bg-gradient-to-br ${gradient} relative overflow-hidden`}>
+  <div className={`p-8 rounded-[2.5rem] shadow-sm text-white bg-gradient-to-br ${gradient} relative overflow-hidden group`}>
+    <div className="absolute -right-4 -top-4 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
+       {React.cloneElement(icon as React.ReactElement, { size: 64 })}
+    </div>
     <div className="relative z-10">
-      <div className="p-4 bg-white/10 rounded-2xl mb-6 inline-block">{icon}</div>
-      <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">{title}</p>
-      <h4 className="text-4xl font-black">{value.toLocaleString()} <span className="text-sm font-bold opacity-70">{unit}</span></h4>
-      <p className="text-[10px] mt-6 opacity-40">{description}</p>
+      <div className="p-3 bg-white/10 rounded-xl mb-4 inline-block">{icon}</div>
+      <p className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-2">{title}</p>
+      <h4 className="text-2xl font-black tabular-nums">{Math.abs(value).toLocaleString()} <span className="text-[10px] font-bold opacity-70 mr-1">{unit}</span></h4>
+      <p className="text-[9px] mt-4 opacity-40 font-bold">{description}</p>
     </div>
   </div>
 );
