@@ -6,6 +6,9 @@ import {
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from '../types';
 
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+
 interface BankTransactionsProps {
   customers: Customer[];
   transactions: Transaction[];
@@ -73,7 +76,7 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
       bankTo: formData.destinationAccount,
       cardLastFour: formData.cardLastFour,
       description: formData.description || (activeType === TransactionType.RESID ? 'واریز بانکی' : 'برداشت بانکی'),
-      timestamp: Date.now(),
+      timestamp: getSystemNow(),
       status: TransactionStatus.PENDING,
       isBank: true 
     };
@@ -92,7 +95,7 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
           <div className="p-5 bg-blue-50 text-blue-600 rounded-[2rem]">
             <Landmark size={40} />
           </div>
-          <div>
+          <div className="text-right">
             <h3 className="text-3xl font-black text-slate-900">تراکنش‌های بانکی</h3>
             <p className="text-sm text-slate-400 mt-2 font-medium italic">ثبت مستقیم اسناد بانکی با فیلدهای تخصصی کارت و پیگیری.</p>
           </div>
@@ -111,12 +114,12 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-10 items-start">
         
         <div className="xl:col-span-5 bg-white p-10 rounded-[3.5rem] border border-slate-100 shadow-sm">
-           <form onSubmit={handleSubmit} className="space-y-8">
+           <form onSubmit={handleSubmit} className="space-y-8 text-right">
               <div className="space-y-2">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۱. مبلغ تراکنش</label>
                  <div className="flex gap-2">
-                    <input type="number" className="flex-1 p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-3xl font-black outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" placeholder="0" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} />
-                    <select className="w-32 p-5 bg-slate-100 rounded-[1.5rem] font-black text-sm outline-none" value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})}>
+                    <input type="number" className="flex-1 p-6 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-3xl font-black outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-right" placeholder="0" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} />
+                    <select className="w-32 p-5 bg-slate-100 rounded-[1.5rem] font-black text-sm outline-none text-right" value={formData.currency} onChange={e => setFormData({...formData, currency: e.target.value})}>
                        {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
                     </select>
                  </div>
@@ -126,10 +129,10 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۲. نام یا کد مشتری</label>
                  <div className="relative">
                     <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                    <input type="text" className="w-full p-5 pr-14 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none" placeholder="جستجو مشتری..." value={searchCustomer} onChange={e => setSearchCustomer(e.target.value)} />
+                    <input type="text" className="w-full p-5 pr-14 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold outline-none text-right" placeholder="جستجو مشتری..." value={searchCustomer} onChange={e => setSearchCustomer(e.target.value)} />
                  </div>
                  {filteredCustomers.length > 0 && (
-                   <div className="absolute z-20 w-full mt-2 bg-white border border-slate-100 rounded-3xl shadow-2xl max-h-48 overflow-y-auto p-2">
+                   <div className="absolute z-20 w-full mt-2 bg-white border border-slate-100 rounded-3xl shadow-2xl max-h-48 overflow-y-auto p-2 text-right">
                      {filteredCustomers.map(c => (
                        <button key={c.id} type="button" onClick={() => { setFormData({...formData, customerId: c.id}); setSearchCustomer(c.name); }} className="w-full p-4 hover:bg-slate-50 text-right rounded-2xl flex items-center justify-between group">
                           <span className="font-black text-slate-800">{c.name}</span>
@@ -143,11 +146,11 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
               <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۳. حساب مبدأ (واریزکننده)</label>
-                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm outline-none" placeholder="بانک مبدأ..." value={formData.sourceAccount} onChange={e => setFormData({...formData, sourceAccount: e.target.value})} />
+                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm outline-none text-right" placeholder="بانک مبدأ..." value={formData.sourceAccount} onChange={e => setFormData({...formData, sourceAccount: e.target.value})} />
                  </div>
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۴. حساب مقصد (صرافی)</label>
-                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm outline-none" placeholder="بانک مقصد..." value={formData.destinationAccount} onChange={e => setFormData({...formData, destinationAccount: e.target.value})} />
+                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm outline-none text-right" placeholder="بانک مقصد..." value={formData.destinationAccount} onChange={e => setFormData({...formData, destinationAccount: e.target.value})} />
                  </div>
               </div>
 
@@ -161,13 +164,13 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
                  </div>
                  <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۶. شماره پیگیری / سریال</label>
-                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-black font-mono text-sm outline-none" placeholder="Ref Number" value={formData.trackingId} onChange={e => setFormData({...formData, trackingId: e.target.value})} />
+                    <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-black font-mono text-sm outline-none text-right" placeholder="Ref Number" value={formData.trackingId} onChange={e => setFormData({...formData, trackingId: e.target.value})} />
                  </div>
               </div>
 
               <div className="space-y-2">
                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۷. توضیحات تکمیلی</label>
-                 <textarea className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm min-h-[100px] outline-none" placeholder="توضیحات..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                 <textarea className="w-full p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] font-bold text-sm min-h-[100px] outline-none text-right" placeholder="توضیحات..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
               </div>
 
               <button type="submit" className={`w-full py-6 rounded-[2rem] font-black text-xl text-white shadow-2xl transition-all active:scale-95 flex items-center justify-center gap-3 ${activeType === TransactionType.RESID ? 'bg-emerald-600 shadow-emerald-100' : 'bg-rose-600 shadow-rose-100'}`}>
@@ -184,7 +187,7 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
               </div>
               <div className="relative w-72">
                  <Filter className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                 <input type="text" placeholder="جستجو (مشتری، سریال، کارت)..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3 pr-12 pl-4 text-xs font-bold outline-none" value={historySearch} onChange={e => setHistorySearch(e.target.value)} />
+                 <input type="text" placeholder="جستجو (مشتری، سریال، کارت)..." className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3 pr-12 pl-4 text-xs font-bold outline-none text-right" value={historySearch} onChange={e => setHistorySearch(e.target.value)} />
               </div>
            </div>
 
@@ -192,7 +195,7 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
               {bankHistory.map(t => {
                 const customer = customers.find(c => c.id === t.customerId);
                 return (
-                  <div key={t.id} className="p-6 bg-slate-50 border border-slate-100 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-center gap-4 group hover:bg-white hover:shadow-xl transition-all">
+                  <div key={t.id} className="p-6 bg-slate-50 border border-slate-100 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-center gap-4 group hover:bg-white hover:shadow-xl transition-all border-r-4 border-r-blue-500">
                      <div className="flex items-center gap-5">
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black ${t.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                            {t.type === TransactionType.RESID ? <ArrowDownLeft size={24} /> : <ArrowUpRight size={24} />}
@@ -200,7 +203,7 @@ const BankTransactions: React.FC<BankTransactionsProps> = ({ customers, transact
                         <div className="text-right">
                            <p className="font-black text-slate-900 text-base">{customer?.name || '---'}</p>
                            <div className="flex items-center gap-2 mt-1">
-                              {t.cardLastFour && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg flex items-center gap-1"><CreditCard size={10}/> **** {t.cardLastFour}</span>}
+                              {t.cardLastFour && <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg flex items-center gap-1 text-right"><CreditCard size={10}/> **** {t.cardLastFour}</span>}
                               <span className="text-[10px] text-slate-400 font-bold">{new Date(t.timestamp).toLocaleTimeString('fa-IR')}</span>
                            </div>
                         </div>

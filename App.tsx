@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
   Settings as SettingsIcon, Briefcase, PieChart, Landmark, Sparkles, Zap,
-  ArrowRightLeft, CreditCard, Printer
+  ArrowRightLeft, CreditCard, Printer, UserPlus
 } from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate, BankAccount } from './types';
 import Dashboard from './components/Dashboard';
@@ -12,16 +12,18 @@ import Journal from './components/Journal';
 import Approvals from './components/Approvals';
 import Settings from './components/Settings';
 import AssetCalculator from './components/AssetCalculator';
-import AnonymousDeposits from './components/AnonymousDeposits';
 import CashBoxManager from './components/CashBoxManager';
 import BankManager from './components/BankManager';
-import GuestManager from './components/GuestManager';
 import ExchangeBalances from './components/ExchangeBalances';
 import BankTransactions from './components/BankTransactions';
 import ReportManager from './components/ReportManager';
+import WalkinManager from './components/WalkinManager';
+
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'anonymous' | 'cashbox' | 'settings' | 'guest' | 'exchange' | 'bankTransactions' | 'reports'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -51,7 +53,12 @@ const App: React.FC = () => {
 
   const [globalRates, setGlobalRates] = useState<GlobalRate[]>(() => {
     const saved = localStorage.getItem('s_rates');
-    return saved ? JSON.parse(saved) : [{ currencyCode: 'USD', rateToAfn: 70.5, lastUpdated: Date.now(), source: 'Manual' }];
+    return saved ? JSON.parse(saved) : [
+      { currencyCode: 'USD', rateToAfn: 0, lastUpdated: getSystemNow(), source: 'Manual' },
+      { currencyCode: 'PKR', rateToAfn: 0, lastUpdated: getSystemNow(), source: 'Manual' },
+      { currencyCode: 'IRT_CASH', rateToAfn: 0, lastUpdated: getSystemNow(), source: 'Manual' },
+      { currencyCode: 'IRT_BANK', rateToAfn: 0, lastUpdated: getSystemNow(), source: 'Manual' }
+    ];
   });
 
   useEffect(() => {
@@ -71,15 +78,12 @@ const App: React.FC = () => {
     SUPPORTED_CURRENCIES.forEach(curr => {
       const resid = approvedCash.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
       const board = approvedCash.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
-      
       const exchangeIn = approvedCash.filter(t => t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code).reduce((sum, t) => sum + (t.convertedAmount || 0), 0);
       const exchangeOut = approvedCash.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
-      
       cashBox[curr.code] = (resid + exchangeIn) - (board + exchangeOut);
     });
 
-    const totalProfit = approved.filter(t => t.type === TransactionType.EXCHANGE).reduce((sum, t) => sum + (t.netProfit || 0), 0);
-
+    const totalProfit = approved.reduce((sum, t) => sum + (t.netProfit || 0), 0);
     return { cashBox, totalProfit };
   }, [transactions]);
 
@@ -92,20 +96,20 @@ const App: React.FC = () => {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-['Vazirmatn'] relative overflow-hidden" dir="rtl">
-        <div className="relative w-full max-w-sm bg-white/5 backdrop-blur-3xl p-10 rounded-[3rem] border border-white/10 shadow-2xl">
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 font-['Vazirmatn']" dir="rtl">
+        <div className="w-full max-w-sm bg-[#0f172a] p-10 rounded-2xl border border-slate-800 shadow-2xl">
           <div className="flex justify-center mb-8">
-            <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-900/20">
-              <Wallet size={32} />
+            <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
+              <Landmark size={28} />
             </div>
           </div>
-          <h1 className="text-2xl font-black text-white text-center mb-2">ورود به پنل صرافی</h1>
-          <p className="text-slate-500 text-center text-[10px] mb-8 uppercase tracking-widest font-black">Secure Access Management</p>
+          <h1 className="text-xl font-bold text-white text-center mb-1">سامانه مدیریتی صرافی</h1>
+          <p className="text-slate-500 text-center text-[10px] mb-8 uppercase tracking-widest font-bold">Secure Access Gateway</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" required placeholder="نام کاربری" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 text-white outline-none focus:border-blue-500 transition-all" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
-            <input type="password" required placeholder="رمز عبور" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-5 text-white outline-none focus:border-blue-500 transition-all" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-            <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-blue-900/20 hover:scale-[1.02] active:scale-95 transition-all mt-4">ورود به سیستم</button>
-            {loginError && <p className="text-rose-500 text-center text-xs font-bold mt-4 animate-bounce">{loginError}</p>}
+            <input type="text" required placeholder="نام کاربری" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
+            <input type="password" required placeholder="رمز عبور" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
+            <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-xl hover:bg-blue-700 transition-all mt-4">ورود ایمن</button>
+            {loginError && <p className="text-rose-500 text-center text-xs font-bold mt-4">{loginError}</p>}
           </form>
         </div>
       </div>
@@ -114,53 +118,58 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-['Vazirmatn']" dir="rtl">
-      <aside className="w-64 bg-slate-950 text-white flex flex-col shrink-0 print:hidden">
+      <aside className="w-60 bg-[#0f172a] text-white flex flex-col shrink-0 print:hidden">
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-3 mb-10 p-2 bg-white/5 rounded-2xl">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg"><Sparkles size={20} /></div>
-            <h1 className="text-sm font-black truncate">{shopName}</h1>
+          <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-800">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm"><Briefcase size={16} /></div>
+            <h1 className="text-[12px] font-black truncate text-slate-100">{shopName}</h1>
           </div>
-          <nav className="space-y-1 flex-1 overflow-y-auto custom-scrollbar">
-            <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={18} />} label="داشبورد" />
-            <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={18} />} label="دفتر مشتریان" />
-            <NavItem active={activeTab === 'exchange'} onClick={() => setActiveTab('exchange')} icon={<ArrowRightLeft size={18} />} label="تبادله ارز" />
-            <NavItem active={activeTab === 'bankTransactions'} onClick={() => setActiveTab('bankTransactions')} icon={<CreditCard size={18} />} label="تراکنش بانکی" />
-            <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={18} />} label="روزنامهچه" />
-            <NavItem active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<Printer size={18} />} label="گزارشات چاپی" />
-            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={18} />} label="تائیدات" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
-            <NavItem active={activeTab === 'cashbox'} onClick={() => setActiveTab('cashbox')} icon={<Briefcase size={18} />} label="صندوق نقد" />
-            <NavItem active={activeTab === 'bankAccounts'} onClick={() => setActiveTab('bankAccounts')} icon={<Landmark size={18} />} label="بانک‌ها" />
-            <NavItem active={activeTab === 'guest'} onClick={() => setActiveTab('guest')} icon={<Zap size={18} />} label="راه‌روی" />
-            <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={18} />} label="تراز دارائی" />
-            <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={18} />} label="تنظیمات" />
+          <nav className="space-y-1 flex-1 overflow-y-auto custom-scrollbar pr-0">
+            <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={16} />} label="داشبورد آماری" />
+            <NavItem active={activeTab === 'customers'} onClick={() => setActiveTab('customers')} icon={<Users size={16} />} label="دفتر کل مشتریان" />
+            <NavItem active={activeTab === 'walkin'} onClick={() => setActiveTab('walkin')} icon={<Zap size={16} />} label="مشتری راه‌روی" />
+            <NavItem active={activeTab === 'exchange'} onClick={() => setActiveTab('exchange')} icon={<ArrowRightLeft size={16} />} label="تبادلات ارزی" />
+            <NavItem active={activeTab === 'bankTransactions'} onClick={() => setActiveTab('bankTransactions')} icon={<CreditCard size={16} />} label="عملیات بانکی" />
+            <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={16} />} label="روزنامچه کل" />
+            <NavItem active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<Printer size={16} />} label="گزارش‌گیری و چاپ" />
+            <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={16} />} label="تائیدات نهایی" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
+            <div className="h-px bg-slate-800 my-4 opacity-40"></div>
+            <NavItem active={activeTab === 'cashbox'} onClick={() => setActiveTab('cashbox')} icon={<Wallet size={16} />} label="مدیریت صندوق" />
+            <NavItem active={activeTab === 'bankAccounts'} onClick={() => setActiveTab('bankAccounts')} icon={<Landmark size={16} />} label="مدیریت بانک‌ها" />
+            <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={16} />} label="تراز دارایی‌ها" />
+            <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={16} />} label="تنظیمات سیستم" />
           </nav>
-          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-4 mt-auto rounded-xl hover:bg-white/5 transition-all">
-            <LogOut size={18} /> <span className="text-xs font-black">خروج از حساب</span>
+          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-3 mt-auto rounded-xl hover:bg-slate-900 transition-all">
+            <LogOut size={16} /> <span className="text-[11px] font-bold">خروج از پنل</span>
           </button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center shadow-sm print:hidden">
-          <h2 className="text-lg font-black text-slate-900">پنل مدیریت صرافی هوشمند</h2>
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center print:hidden">
+          <div className="flex items-center gap-4">
+            <div className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+               <p className="text-[10px] font-bold text-slate-500 uppercase">System Status: <span className="text-emerald-600">Active</span></p>
+            </div>
+          </div>
           <div className="flex items-center gap-4">
              <div className="text-right">
-                <span className="block text-xs font-black text-slate-800">{currentUser?.fullName}</span>
-                <span className="block text-[8px] font-black text-blue-600 uppercase tracking-widest">{currentUser?.role} Mode</span>
+                <span className="block text-[11px] font-bold text-slate-800">{currentUser?.fullName}</span>
+                <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{currentUser?.role === 'admin' ? 'SYSTEM ADMINISTRATOR' : 'OPERATOR'}</span>
              </div>
-             <div className="w-10 h-10 rounded-2xl bg-slate-100 flex items-center justify-center font-black text-blue-600 border border-slate-200 shadow-sm">{currentUser?.fullName.charAt(0)}</div>
+             <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-bold text-blue-600 border border-slate-200">{currentUser?.fullName.charAt(0)}</div>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar print:p-0 print:overflow-visible">
+        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar print:p-0">
           {activeTab === 'dashboard' && <Dashboard stats={stats} transactions={transactions} globalRates={globalRates} setGlobalRates={setGlobalRates} bankAccounts={bankAccounts} />}
-          {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} />}
-          {activeTab === 'exchange' && <ExchangeBalances transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} bankAccounts={bankAccounts} customers={customers} />}
+          {activeTab === 'customers' && <CustomerManager customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} setGlobalRates={setGlobalRates} />}
+          {activeTab === 'walkin' && <WalkinManager transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} shopName={shopName} currentUser={currentUser} />}
+          {activeTab === 'exchange' && <ExchangeBalances transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} customers={customers} />}
           {activeTab === 'bankTransactions' && <BankTransactions customers={customers} transactions={transactions} setTransactions={setTransactions} />}
           {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
           {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} />}
           {activeTab === 'cashbox' && <CashBoxManager transactions={transactions} stats={stats} currentUser={currentUser} customers={customers} shopName={shopName} />}
           {activeTab === 'bankAccounts' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
-          {activeTab === 'guest' && <GuestManager setTransactions={setTransactions} bankAccounts={bankAccounts} />}
           {activeTab === 'assets' && <AssetCalculator customers={customers} stats={stats} globalRates={globalRates} />}
           {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} currentUser={currentUser} setCurrentUser={setCurrentUser} shopName={shopName} setShopName={setShopName} />}
           {activeTab === 'reports' && <ReportManager transactions={transactions} customers={customers} shopName={shopName} />}
@@ -171,11 +180,11 @@ const App: React.FC = () => {
 };
 
 const NavItem = ({ active, onClick, icon, label, badge }: any) => (
-  <button onClick={onClick} className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-900/20 translate-x-1' : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'}`}>
+  <button onClick={onClick} className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'}`}>
     <div className="flex items-center gap-3">
-      {icon} <span className="text-[12px] font-black">{label}</span>
+      {icon} <span className="text-[11px] font-bold">{label}</span>
     </div>
-    {badge ? <span className="bg-rose-600 text-white text-[8px] px-2 py-0.5 rounded-lg font-black shadow-lg">{badge}</span> : null}
+    {badge ? <span className="bg-rose-600 text-white text-[9px] px-1.5 py-0.5 rounded-lg font-bold shadow-sm">{badge}</span> : null}
   </button>
 );
 

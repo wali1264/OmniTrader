@@ -11,6 +11,45 @@ export enum TransactionStatus {
   REJECTED = 'rejected'
 }
 
+export enum WalkinStatus {
+  SETTLED = 'settled',
+  DEBTOR = 'debtor',
+  CREDITOR = 'creditor'
+}
+
+export enum CalculationMethod {
+  MACHINE = 'ماشینی',
+  MANUAL = 'دستی'
+}
+
+export enum BankReceiptStatus {
+  PENDING = 'در انتظار',
+  APPROVED = 'تأیید شده',
+  REJECTED = 'رد شده'
+}
+
+export interface BankReceiptLog {
+  status: BankReceiptStatus;
+  comment: string;
+  timestamp: number;
+  userName: string;
+}
+
+export interface BankReceipt {
+  id: string;
+  walkinTransactionId: string;
+  customerName: string;
+  bankName: string;
+  amount: number;
+  currency: string;
+  trackingId: string;
+  timestamp: number;
+  image?: string;
+  description: string;
+  status: BankReceiptStatus;
+  statusLogs: BankReceiptLog[];
+}
+
 export type UserRole = 'admin' | 'operator';
 
 export interface User {
@@ -43,6 +82,11 @@ export interface Transaction {
   status: TransactionStatus;
   isBank: boolean;
   bankAccountId?: string;
+  // Walk-in Specific
+  isWalkin?: boolean;
+  walkinStatus?: WalkinStatus;
+  remainingAmount?: number;
+  remainingCurrency?: string;
   // Bank & Tracking Metadata
   trackingId?: string;
   bankFrom?: string;
@@ -53,6 +97,8 @@ export interface Transaction {
   exchangeRate?: number;
   convertedAmount?: number;
   netProfit?: number;
+  profitCategory?: string;
+  calculationMethod?: CalculationMethod;
 }
 
 export interface BankAccount {
@@ -73,7 +119,8 @@ export interface GlobalRate {
 export const SUPPORTED_CURRENCIES = [
   { code: 'AFN', label: 'افغانی', symbol: '؋' },
   { code: 'USD', label: 'دالر', symbol: '$' },
-  { code: 'IRT_CASH', label: 'تومان نقد', symbol: '💵' },
-  { code: 'IRT_BANK', label: 'تومان بانک', symbol: '💳' },
-  { code: 'PKR', label: 'کلدار', symbol: '₨' }
+  { code: 'EUR', label: 'ایرو', symbol: '€' },
+  { code: 'PKR', label: 'کلدار', symbol: '₨' },
+  { code: 'IRT_CASH', label: 'تومان نقد (بانک‌نوت)', symbol: '💵' },
+  { code: 'IRT_BANK', label: 'تومان حواله (بانک)', symbol: '💳' }
 ];

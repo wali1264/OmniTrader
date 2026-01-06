@@ -4,30 +4,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sarrafi Pro - سیستم مدیریت صرافی</title>
+    <title>Sarrafi Pro - سامانه جامع مدیریت صرافی</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #0f172a;
+            --accent: #2563eb;
+        }
         body {
             font-family: 'Vazirmatn', sans-serif;
             background-color: #f8fafc;
-            /* فعال‌سازی اعداد هم‌عرض برای جلوگیری از جابجایی در ستون‌ها */
+            color: #334155;
+            letter-spacing: -0.01em;
+        }
+
+        /* اعداد جدولی و رسمی */
+        .tnum { 
             font-variant-numeric: tabular-nums;
-            -moz-font-feature-settings: "tnum";
-            -webkit-font-feature-settings: "tnum";
-            font-feature-settings: "tnum";
+            letter-spacing: -0.05em;
         }
 
-        /* کلاس‌های اختصاصی برای کنترل دقیق اعداد */
-        .tnum { font-variant-numeric: tabular-nums; }
+        /* استایل جداول رسمی */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th {
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+        }
         
-        /* محدود کردن عرض محتوا برای جلوگیری از کشیدگی بیش از حد در مانیتورهای عریض */
-        .app-container {
-            max-width: 1440px;
-            margin: 0 auto;
-        }
-
-        /* اسکرول‌بار ظریف‌تر */
+        /* اسکرول‌بار باریک و مدرن */
         ::-webkit-scrollbar {
             width: 5px;
             height: 5px;
@@ -43,13 +54,27 @@
             background: #cbd5e1;
         }
 
-        /* انیمیشن ورود نرم */
-        .fade-entry {
-            animation: fadeIn 0.4s ease-out forwards;
+        .formal-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(5px); }
+
+        .fade-entry {
+            animation: fastFade 0.15s ease-out forwards;
+        }
+        @keyframes fastFade {
+            from { opacity: 0; transform: translateY(2px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* بهینه‌سازی فضا برای نمایشگرهای کوچک دسکتاپ */
+        @media (min-width: 1280px) {
+            .container-fluid {
+                padding-left: 2rem;
+                padding-right: 2rem;
+            }
         }
     </style>
 <script type="importmap">

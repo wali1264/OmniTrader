@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Briefcase, ArrowDownLeft, ArrowUpRight, 
-  Search, CheckCircle, Wallet, Printer as PrintIcon
+  Search, CheckCircle, Wallet, Printer as PrintIcon, TrendingUp
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User as SystemUser, Customer } from '../types';
 
@@ -23,9 +23,20 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
   const cashMovements = useMemo(() => {
     return transactions.filter(t => 
       t.status === TransactionStatus.APPROVED &&
-      (customers.find(c => c.id === t.customerId)?.name.includes(searchTerm) || t.description.includes(searchTerm))
+      !t.isBank && // نمایش اختصاصی تراکنش‌های نقدی (جدا از بانک)
+      (
+        (t.customerId && customers.find(c => c.id === t.customerId)?.name.includes(searchTerm)) || 
+        (t.guestName && t.guestName.includes(searchTerm)) ||
+        t.description.includes(searchTerm)
+      )
     ).sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, searchTerm, customers]);
+
+  const cashProfit = useMemo(() => {
+    return cashMovements
+      .filter(t => t.type === TransactionType.EXCHANGE)
+      .reduce((sum, t) => sum + (t.netProfit || 0), 0);
+  }, [cashMovements]);
 
   const handlePrint = () => {
     window.print();
@@ -38,7 +49,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
         <div className="lg:col-span-1 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 p-6 opacity-10"><Briefcase size={80} /></div>
            <div className="relative z-10">
-              <h3 className="text-xl font-black mb-1">میز عملیاتی صندوق نقد</h3>
+              <h3 className="text-xl font-black mb-1">Drawer (صندوق نقد)</h3>
               <div className="mt-8">
                  <p className="text-[10px] text-slate-500 mb-1">صندوقدار فعلی:</p>
                  <p className="font-black text-blue-400">{currentUser?.fullName}</p>
@@ -47,9 +58,18 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
         </div>
 
         <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
-           <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-             <Wallet size={14} className="text-blue-500" /> موجودی لحظه‌ای کل نقدینگی صرافی
-           </h4>
+           <div className="flex justify-between items-center mb-6">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Wallet size={14} className="text-blue-500" /> موجودی لحظه‌ای فیزیکی صندوق (بدون بانک)
+              </h4>
+              <div className="bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 flex items-center gap-3">
+                <div className="text-right">
+                  <span className="block text-[8px] font-black text-emerald-600 uppercase">مفاد نقدینگی امروز</span>
+                  <span className="block text-sm font-black text-emerald-700 tnum">{cashProfit.toLocaleString()} <span className="text-[9px]">AFN</span></span>
+                </div>
+                <TrendingUp size={16} className="text-emerald-500" />
+              </div>
+           </div>
            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {SUPPORTED_CURRENCIES.map(curr => (
                 <div key={curr.code} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
@@ -67,14 +87,15 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
              <div className="flex justify-between items-center mb-8">
                 <div>
-                   <h3 className="text-xl font-black text-slate-900">تاریخچه ورود و خروج نقد</h3>
+                   <h3 className="text-xl font-black text-slate-900">روزنامچه اختصاصی صندوق (فقط نقد)</h3>
+                   <p className="text-[10px] text-slate-400 font-bold mt-1">تراکنش‌های بانکی در این بخش نمایش داده نمی‌شوند.</p>
                 </div>
                 <div className="relative">
                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                    <input 
                      type="text" 
-                     placeholder="جستجو..." 
-                     className="bg-slate-50 border border-slate-100 rounded-xl py-2.5 pr-12 pl-4 text-xs font-bold outline-none" 
+                     placeholder="جستجو در نقدی..." 
+                     className="bg-slate-50 border border-slate-100 rounded-xl py-2.5 pr-12 pl-4 text-xs font-bold outline-none focus:bg-white transition-all" 
                      value={searchTerm}
                      onChange={e => setSearchTerm(e.target.value)}
                    />
@@ -84,6 +105,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
              <div className="space-y-3">
                 {cashMovements.map(t => {
                    const customer = customers.find(c => c.id === t.customerId);
+                   const displayName = customer?.name || t.guestName || 'تراکنش نقدی';
                    return (
                      <button 
                        key={t.id} 
@@ -91,22 +113,33 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                        className={`w-full p-6 rounded-[2rem] border transition-all flex items-center justify-between group ${selectedReceipt?.id === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-slate-50 hover:bg-slate-50 text-slate-900'}`}
                      >
                         <div className="flex items-center gap-6">
-                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black ${selectedReceipt?.id === t.id ? 'bg-white/20' : t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
-                              {t.type === TransactionType.RESID ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
+                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black ${selectedReceipt?.id === t.id ? 'bg-white/20' : t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>
+                              {t.type === TransactionType.RESID ? <ArrowDownLeft size={20} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={20} /> : <CheckCircle size={20} />}
                            </div>
                            <div className="text-right">
-                              <p className="font-black text-base">{customer?.name || 'مشتری آزاد'}</p>
-                              <p className="text-[10px] opacity-60">
-                                 {new Date(t.timestamp).toLocaleTimeString('fa-IR')}
-                              </p>
+                              <p className="font-black text-base">{displayName}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                 <p className="text-[10px] opacity-60">
+                                    {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
+                                 </p>
+                                 {t.type === TransactionType.EXCHANGE && (
+                                   <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>تبادله نقد</span>
+                                 )}
+                              </div>
                            </div>
                         </div>
-                        <div className="text-left">
-                           <p className="text-lg font-black">{t.amount.toLocaleString()} <span className="text-xs uppercase">{t.currency}</span></p>
+                        <div className="text-left flex flex-col items-end">
+                           <p className="text-lg font-black tabular-nums">{t.amount.toLocaleString()} <span className="text-xs uppercase">{t.currency}</span></p>
+                           {t.type === TransactionType.EXCHANGE && t.netProfit && (
+                             <p className={`text-[9px] font-bold ${selectedReceipt?.id === t.id ? 'text-white' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN مفاد</p>
+                           )}
                         </div>
                      </button>
                    );
                 })}
+                {cashMovements.length === 0 && (
+                   <div className="py-20 text-center text-slate-300 italic font-bold">تراکنش نقدی در این بخش یافت نشد.</div>
+                )}
              </div>
           </div>
         </div>
@@ -120,35 +153,49 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                          <div className="w-12 h-12 bg-slate-900 text-white flex items-center justify-center rounded-2xl font-black italic">J</div>
                          <div>
                             <h4 className="font-black text-slate-900 leading-none">{shopName}</h4>
-                            <p className="text-[8px] font-black text-slate-400 uppercase mt-1">Cash Receipt System</p>
+                            <p className="text-[8px] font-black text-slate-400 uppercase mt-1 text-right">Cash Receipt (Drawer)</p>
                          </div>
                       </div>
                       <div className="text-left">
-                         <p className="text-sm font-black text-slate-900"># {selectedReceipt.id.toUpperCase()}</p>
+                         <p className="text-sm font-black text-slate-900 font-mono"># {selectedReceipt.id.toUpperCase()}</p>
                       </div>
                    </div>
 
                    <div className="space-y-8">
                       <div className="flex justify-between items-center bg-slate-50 p-6 rounded-[2rem]">
-                         <span className={`px-4 py-1.5 rounded-full text-xs font-black ${selectedReceipt.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                            {selectedReceipt.type === TransactionType.RESID ? 'رسید نقد' : 'برد نقد'}
+                         <span className={`px-4 py-1.5 rounded-full text-xs font-black ${selectedReceipt.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-700' : selectedReceipt.type === TransactionType.BOARD ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {selectedReceipt.type === TransactionType.RESID ? 'رسید نقد' : selectedReceipt.type === TransactionType.BOARD ? 'برد نقد' : 'تبادله نقد'}
                          </span>
-                         <p className="text-xs font-black text-slate-900">{new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}</p>
+                         <p className="text-xs font-black text-slate-900 tabular-nums">{new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}</p>
                       </div>
 
-                      <div className="space-y-5">
+                      <div className="space-y-5 text-right">
                          <div className="flex justify-between border-b border-slate-50 pb-4">
                             <span className="text-sm font-bold text-slate-400">نام مشتری:</span>
-                            <span className="text-sm font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || 'مشتری آزاد'}</span>
+                            <span className="text-sm font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد'}</span>
                          </div>
                          <div className="flex justify-between border-b border-slate-50 pb-4">
                             <span className="text-sm font-bold text-slate-400">مبلغ:</span>
                             <div className="text-left">
-                               <p className="text-2xl font-black text-slate-900">{selectedReceipt.amount.toLocaleString()} <span className="text-xs uppercase">{selectedReceipt.currency}</span></p>
+                               <p className="text-2xl font-black text-slate-900 tabular-nums">{selectedReceipt.amount.toLocaleString()} <span className="text-xs uppercase">{selectedReceipt.currency}</span></p>
                             </div>
                          </div>
-                         <div className="pt-2">
-                            <p className="text-xs font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic">
+                         {selectedReceipt.type === TransactionType.EXCHANGE && (
+                           <>
+                             <div className="flex justify-between border-b border-slate-50 pb-4">
+                                <span className="text-sm font-bold text-slate-400">تبدیل به:</span>
+                                <div className="text-left">
+                                   <p className="text-lg font-black text-emerald-600 tabular-nums">{selectedReceipt.convertedAmount?.toLocaleString()} <span className="text-[10px] uppercase text-slate-400">{selectedReceipt.targetCurrency}</span></p>
+                                </div>
+                             </div>
+                             <div className="flex justify-between border-b border-slate-50 pb-4">
+                                <span className="text-sm font-bold text-emerald-600">مفاد از تبادله:</span>
+                                <span className="text-sm font-black text-emerald-700">{selectedReceipt.netProfit?.toLocaleString()} AFN</span>
+                             </div>
+                           </>
+                         )}
+                         <div className="pt-2 text-right">
+                            <p className="text-xs font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed">
                                {selectedReceipt.description || 'بدون شرح تراکنش'}
                             </p>
                          </div>

@@ -3,6 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { Printer, FileText, Users, BookOpen, Calendar, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react';
 import { Transaction, Customer, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES } from '../types';
 
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+
 interface ReportManagerProps {
   transactions: Transaction[];
   customers: Customer[];
@@ -12,35 +15,24 @@ interface ReportManagerProps {
 const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, shopName }) => {
   const [reportType, setReportType] = useState<'customers' | 'journal'>('customers');
   
-  // تنظیم تاریخ پیش‌فرض: از ابتدای ماه جاری تا امروز
-  const now = new Date();
+  const now = new Date(getSystemNow());
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
   const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState(now.toISOString().split('T')[0]);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date(getSystemNow()));
 
   const approvedTransactions = useMemo(() => {
     return transactions.filter(t => t.status === TransactionStatus.APPROVED);
   }, [transactions]);
 
   const customerBalances = useMemo(() => {
-    // تبدیل رشته تاریخ به شیء Date برای مقایسه
     const start = new Date(startDate).getTime();
-    const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000); // شامل کل روز پایانی
+    const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000);
 
-    // مرتب‌سازی مشتریان بر اساس کد قبل از محاسبه
     const sortedCustomers = [...customers].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
 
     return sortedCustomers.map(customer => {
       const balances: Record<string, number> = {};
-      // تراکنش‌های مشتری که در بازه زمانی انتخاب شده هستند
-      const customerTrans = approvedTransactions.filter(t => 
-        t.customerId === customer.id && 
-        t.timestamp >= start && 
-        t.timestamp <= end
-      );
-      
-      // تراکنش‌های قبل از بازه برای محاسبه مانده قبلی (اختیاری - در اینجا مانده کل تا تاریخ پایان محاسبه می‌شود)
       const allTransUntilEnd = approvedTransactions.filter(t => 
         t.customerId === customer.id && 
         t.timestamp <= end
@@ -81,10 +73,9 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
 
   return (
     <div className="space-y-8 pb-20">
-      {/* هدر کنترلی - در چاپ مخفی است */}
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col gap-6 print:hidden">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div>
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 text-right">
+          <div className="text-right">
             <h2 className="text-2xl font-black text-slate-900">مرکز گزارشات چاپی</h2>
             <p className="text-xs text-slate-400 mt-1 font-bold">صدور صورت‌حساب‌های کلی و روزنامچه برای پرینت فیزیکی.</p>
           </div>
@@ -103,33 +94,30 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
           </div>
         </div>
 
-        {/* فیلتر تاریخ بازه‌ای برای صورت‌حساب مشتریان */}
         {reportType === 'customers' && (
-          <div className="flex flex-col md:flex-row items-center gap-4 bg-blue-50/50 p-4 rounded-3xl border border-blue-100">
-            <div className="flex items-center gap-3 flex-1">
+          <div className="flex flex-col md:flex-row items-center gap-4 bg-blue-50/50 p-4 rounded-3xl border border-blue-100 text-right">
+            <div className="flex items-center gap-3 flex-1 text-right">
               <Calendar size={18} className="text-blue-600" />
               <span className="text-xs font-black text-blue-900">بازه زمانی گزارش:</span>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex flex-col">
+              <div className="flex flex-col text-right">
                 <label className="text-[9px] font-black text-slate-400 mr-1 mb-1">از تاریخ</label>
-                <input type="date" className="bg-white border border-blue-100 rounded-xl px-4 py-2 text-xs font-black outline-none" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                <input type="date" className="bg-white border border-blue-100 rounded-xl px-4 py-2 text-xs font-black outline-none text-right" value={startDate} onChange={e => setStartDate(e.target.value)} />
               </div>
               <ArrowLeftRight size={16} className="text-blue-300 mt-4" />
-              <div className="flex flex-col">
+              <div className="flex flex-col text-right">
                 <label className="text-[9px] font-black text-slate-400 mr-1 mb-1">تا تاریخ</label>
-                <input type="date" className="bg-white border border-blue-100 rounded-xl px-4 py-2 text-xs font-black outline-none" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                <input type="date" className="bg-white border border-blue-100 rounded-xl px-4 py-2 text-xs font-black outline-none text-right" value={endDate} onChange={e => setEndDate(e.target.value)} />
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ناحیه چاپی */}
       <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden print:shadow-none print:border-none print:rounded-none">
         
-        {/* هدر گزارش چاپی */}
-        <div className="p-10 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center print:bg-white">
+        <div className="p-10 border-b border-slate-100 bg-slate-50/30 flex justify-between items-center print:bg-white text-right">
           <div className="text-right">
             <h1 className="text-3xl font-black text-slate-900">{shopName}</h1>
             <p className="text-sm font-bold text-slate-400 mt-2">
@@ -147,14 +135,13 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
           )}
         </div>
 
-        {/* محتوای گزارش مشتریان */}
         {reportType === 'customers' && (
-          <div className="p-10">
+          <div className="p-10 text-right">
             <table className="w-full text-right text-[10px] border-collapse">
-              <thead className="bg-slate-100 print:bg-slate-200">
+              <thead className="bg-slate-100 print:bg-slate-200 text-right">
                 <tr>
-                  <th className="p-3 font-black border border-slate-300">کد</th>
-                  <th className="p-3 font-black border border-slate-300">نام مشتری</th>
+                  <th className="p-3 font-black border border-slate-300 text-right">کد</th>
+                  <th className="p-3 font-black border border-slate-300 text-right">نام مشتری</th>
                   {SUPPORTED_CURRENCIES.map(curr => (
                     <th key={curr.code} className="p-3 font-black border border-slate-300 text-center">{curr.label}</th>
                   ))}
@@ -163,8 +150,8 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
               <tbody>
                 {customerBalances.map(c => (
                   <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 font-black border border-slate-200 text-slate-900 bg-slate-50/50 print:bg-transparent tabular-nums">{c.code}</td>
-                    <td className="p-3 font-black border border-slate-200 text-slate-900">{c.name}</td>
+                    <td className="p-3 font-black border border-slate-200 text-slate-900 bg-slate-50/50 print:bg-transparent tabular-nums text-right">{c.code}</td>
+                    <td className="p-3 font-black border border-slate-200 text-slate-900 text-right">{c.name}</td>
                     {SUPPORTED_CURRENCIES.map(curr => {
                       const bal = c.currentBalances[curr.code] || 0;
                       return (
@@ -180,17 +167,16 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
           </div>
         )}
 
-        {/* محتوای گزارش روزنامچه */}
         {reportType === 'journal' && (
-          <div className="p-10">
+          <div className="p-10 text-right">
             <table className="w-full text-right text-[11px] border-collapse">
-              <thead className="bg-slate-100 print:bg-slate-200">
+              <thead className="bg-slate-100 print:bg-slate-200 text-right">
                 <tr>
-                  <th className="p-4 font-black border border-slate-200">ساعت</th>
-                  <th className="p-4 font-black border border-slate-200">طرف حساب</th>
-                  <th className="p-4 font-black border border-slate-200">نوع</th>
+                  <th className="p-4 font-black border border-slate-200 text-right">ساعت</th>
+                  <th className="p-4 font-black border border-slate-200 text-right">طرف حساب</th>
+                  <th className="p-4 font-black border border-slate-200 text-right">نوع</th>
                   <th className="p-4 font-black border border-slate-200 text-center">مبلغ</th>
-                  <th className="p-4 font-black border border-slate-200">شرح و جزئیات</th>
+                  <th className="p-4 font-black border border-slate-200 text-right">شرح و جزئیات</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,13 +184,13 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
                   const customer = customers.find(c => c.id === t.customerId);
                   return (
                     <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 font-bold border border-slate-100 text-slate-400 tabular-nums">{new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}</td>
-                      <td className="p-4 font-black border border-slate-100 text-slate-900">{customer?.name || t.guestName || '---'}</td>
-                      <td className={`p-4 font-black border border-slate-100 ${t.type === TransactionType.RESID ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type}</td>
+                      <td className="p-4 font-bold border border-slate-100 text-slate-400 tabular-nums text-right">{new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}</td>
+                      <td className="p-4 font-black border border-slate-100 text-slate-900 text-right">{customer?.name || t.guestName || '---'}</td>
+                      <td className={`p-4 font-black border border-slate-100 text-right ${t.type === TransactionType.RESID ? 'text-emerald-600' : 'text-rose-600'}`}>{t.type}</td>
                       <td className="p-4 font-black border border-slate-100 text-center tabular-nums">
                         {t.amount.toLocaleString()} <span className="text-[9px] opacity-40 uppercase">{t.currency}</span>
                       </td>
-                      <td className="p-4 font-medium border border-slate-100 text-slate-600 text-[10px]">{t.description}</td>
+                      <td className="p-4 font-medium border border-slate-100 text-slate-600 text-[10px] text-right">{t.description}</td>
                     </tr>
                   );
                 })}
@@ -218,11 +204,10 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
           </div>
         )}
 
-        {/* فوتر گزارش چاپی */}
-        <div className="p-10 border-t border-slate-50 flex justify-between items-end opacity-60">
+        <div className="p-10 border-t border-slate-50 flex justify-between items-end opacity-60 text-right">
           <div className="text-right">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">تاریخ چاپ گزارش</p>
-            <p className="text-xs font-black text-slate-800 tabular-nums">{new Date().toLocaleString('fa-IR')}</p>
+            <p className="text-xs font-black text-slate-800 tabular-nums">{new Date(getSystemNow()).toLocaleString('fa-IR')}</p>
           </div>
           <div className="text-center">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6">مهر و امضاء صرافی</p>

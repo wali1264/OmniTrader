@@ -3,9 +3,11 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { 
   PieChart, TrendingUp, Wallet, Landmark, 
   ArrowUpRight, ArrowDownLeft, ShieldCheck, 
-  Target, Calculator, Coins, DollarSign, Plus, X, Save, AlertCircle, TrendingDown
+  Target, Calculator, Coins, DollarSign, Plus, X, Save, AlertCircle, TrendingDown,
+  Globe, RefreshCw, Loader2, ExternalLink
 } from 'lucide-react';
 import { Customer, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 interface AssetCalculatorProps {
   customers: Customer[];
@@ -15,10 +17,60 @@ interface AssetCalculatorProps {
   globalRates: GlobalRate[];
 }
 
+interface MarketIndex {
+  pair: string;
+  rate: string;
+  change: string;
+  trend: 'up' | 'down' | 'neutral';
+}
+
 const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, globalRates }) => {
-  const currentUsdRate = globalRates.find(r => r.currencyCode === 'USD')?.rateToAfn || 70.5;
-  
-  // State for Initial Assets (Capital)
+  const [isFetchingMarket, setIsFetchingMarket] = useState(false);
+  const [marketIndices, setMarketIndices] = useState<MarketIndex[]>([
+    { pair: 'USD / AFN', rate: '---', change: '0.00%', trend: 'neutral' },
+    { pair: 'EUR / USD', rate: '---', change: '0.00%', trend: 'neutral' },
+    { pair: 'USD / PKR', rate: '---', change: '0.00%', trend: 'neutral' },
+    { pair: 'EUR / AFN', rate: '---', change: '0.00%', trend: 'neutral' }
+  ]);
+
+  const fetchLiveGlobalRates = async () => {
+    setIsFetchingMarket(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Give me the latest real-time market exchange rates for: USD to AFN, EUR to USD, USD to PKR, and EUR to AFN. Return only a JSON array of objects with keys: pair, rate, change, trend ('up' or 'down').",
+        config: {
+          tools: [{ googleSearch: {} }],
+        }
+      });
+      
+      // Extracting URLs from search grounding if available
+      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+      console.log("Sources:", sources);
+
+      // Simple extraction of JSON from response text
+      const match = response.text.match(/\[.*\]/s);
+      if (match) {
+        const data = JSON.parse(match[0]);
+        setMarketIndices(data);
+      }
+    } catch (error) {
+      console.error("Error fetching live rates:", error);
+    } finally {
+      setIsFetchingMarket(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLiveGlobalRates();
+  }, []);
+
+  const getRate = (code: string) => {
+    if (code === 'AFN') return 1;
+    return globalRates.find(r => r.currencyCode === code)?.rateToAfn || 0;
+  };
+
   const [initialAssets, setInitialAssets] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('s_initial_assets');
     return saved ? JSON.parse(saved) : {};
@@ -61,9 +113,8 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
         let totalAfn = 0;
         SUPPORTED_CURRENCIES.forEach(curr => {
             const amount = mapping[curr.code] || 0;
-            if (curr.code === 'AFN') totalAfn += amount;
-            else if (curr.code === 'USD') totalAfn += amount * currentUsdRate;
-            else totalAfn += amount * (currentUsdRate / 10); // Approximation for IRT/PKR to AFN conversion
+            const rate = getRate(curr.code);
+            totalAfn += amount * rate;
         });
         return totalAfn;
     };
@@ -84,14 +135,55 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
       totalGrowth,
       liquidByCurrency, receivablesByCurrency, payablesByCurrency
     };
-  }, [customers, stats, currentUsdRate, initialAssets]);
+  }, [customers, stats, globalRates, initialAssets]);
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-700 pb-24">
+    <div className="space-y-8 animate-in fade-in duration-700 pb-24">
+      {/* Global Market Rates Section */}
+      <section className="bg-[#020617] p-6 rounded-[2rem] border border-slate-800 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500"></div>
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
+              <Globe size={18} className={isFetchingMarket ? "animate-spin" : ""} />
+            </div>
+            <h3 className="text-sm font-black text-white uppercase tracking-widest">Global Market Indices</h3>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[8px] font-black animate-pulse">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+              LIVE MARKET
+            </span>
+          </div>
+          <button 
+            onClick={fetchLiveGlobalRates}
+            disabled={isFetchingMarket}
+            className="p-2 hover:bg-white/5 rounded-xl transition-all text-slate-400 hover:text-white"
+          >
+            {isFetchingMarket ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {marketIndices.map((idx, i) => (
+            <div key={i} className="bg-white/5 border border-white/10 p-4 rounded-2xl hover:bg-white/10 transition-all group">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black text-slate-500 uppercase">{idx.pair}</span>
+                <span className={`text-[9px] font-bold ${idx.trend === 'up' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {idx.trend === 'up' ? '▲' : '▼'} {idx.change}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-xl font-black text-white tabular-nums">{idx.rate}</span>
+                <span className="text-[9px] font-bold text-slate-500">{idx.pair.split(' / ')[1]}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
         <div>
-          <h2 className="text-xl font-black text-slate-900">تراز کل دارائی‌ها و سرمایه</h2>
-          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Equity & Net Asset Valuation</p>
+          <h2 className="text-xl font-black text-slate-900 text-right">تراز کل دارائی‌ها و سرمایه</h2>
+          <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest text-right">Equity & Net Asset Valuation</p>
         </div>
         <button 
           onClick={openInitialModal}
@@ -119,7 +211,7 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
         <div className="p-8 bg-slate-50/30 border-b border-slate-50 flex justify-between items-center">
           <h3 className="text-xl font-black text-slate-900">توازن دارائی به تفکیک واحد پول</h3>
           <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black">
-             <AlertCircle size={14} /> نرخ تبدیل دالر: {currentUsdRate} AFN
+             <AlertCircle size={14} /> مبنای محاسبات: نرخ‌های لحظه‌ای ارز به افغانی
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -167,7 +259,6 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
         </div>
       </div>
 
-      {/* Modal for setting initial assets */}
       {showInitialModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in text-right">
@@ -219,7 +310,7 @@ const AssetCard = ({ title, value, unit, icon, gradient, description, highlight 
     <div className="absolute -right-4 -top-4 p-8 opacity-10 group-hover:scale-110 transition-transform duration-500">
        {React.cloneElement(icon as React.ReactElement, { size: 64 })}
     </div>
-    <div className="relative z-10">
+    <div className="relative z-10 text-right">
       <div className="p-3 bg-white/10 rounded-xl mb-4 inline-block">{icon}</div>
       <p className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-2">{title}</p>
       <h4 className="text-2xl font-black tabular-nums">{Math.abs(value).toLocaleString()} <span className="text-[10px] font-bold opacity-70 mr-1">{unit}</span></h4>

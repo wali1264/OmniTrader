@@ -8,6 +8,9 @@ import {
 } from 'lucide-react';
 import { Customer, Transaction, User, UserRole, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus } from '../types';
 
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+
 interface SettingsProps {
   users: User[];
   setUsers: React.Dispatch<React.SetStateAction<User[]>>;
@@ -88,11 +91,11 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleExport = () => {
-    const backupData = { version: "3.0", timestamp: Date.now(), data: { users, customers, transactions, shopName } };
+    const backupData = { version: "3.0", timestamp: getSystemNow(), data: { users, customers, transactions, shopName } };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `backup_${new Date(getSystemNow()).toISOString().split('T')[0]}.json`;
     link.click();
     setStatus({ type: 'success', message: 'پشتیبان‌گیری انجام شد.' });
   };
@@ -131,7 +134,7 @@ const Settings: React.FC<SettingsProps> = ({
       amount: expenseData.amount,
       currency: expenseData.currency,
       description: `[مصرف] ${expenseData.description}`,
-      timestamp: Date.now(),
+      timestamp: getSystemNow(),
       status: TransactionStatus.APPROVED,
       isBank: false
     };
@@ -149,7 +152,6 @@ const Settings: React.FC<SettingsProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
-      {/* Toast Notification */}
       {status.type !== 'none' && (
         <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-xl shadow-lg animate-in slide-in-from-top ${status.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
           {status.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -157,7 +159,6 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      {/* Navigation Tabs */}
       <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-3xl mx-auto overflow-x-auto scrollbar-hide">
         {isAdmin && (
           <button onClick={() => setActiveSubTab('general')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>تنظیمات عمومی</button>
@@ -183,7 +184,7 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 mr-1">نام صرافی</label>
-              <input type="text" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-bold outline-none focus:ring-2 focus:ring-blue-500/20" value={tempShopName} onChange={e => setTempShopName(e.target.value)} />
+              <input type="text" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 text-right" value={tempShopName} onChange={e => setTempShopName(e.target.value)} />
             </div>
             <button onClick={handleSaveShopName} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
               <Save size={18} /> ذخیره تغییرات
@@ -202,15 +203,15 @@ const Settings: React.FC<SettingsProps> = ({
                <div className="space-y-1.5 md:col-span-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ هزینه</label>
                   <div className="flex gap-2">
-                    <input type="number" className="flex-1 p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none" placeholder="0" value={expenseData.amount || ''} onChange={e => setExpenseData({...expenseData, amount: Number(e.target.value)})} />
-                    <select className="w-24 p-3 bg-slate-100 rounded-xl font-black text-xs outline-none" value={expenseData.currency} onChange={e => setExpenseData({...expenseData, currency: e.target.value})}>
+                    <input type="number" className="flex-1 p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none text-right" placeholder="0" value={expenseData.amount || ''} onChange={e => setExpenseData({...expenseData, amount: Number(e.target.value)})} />
+                    <select className="w-24 p-3 bg-slate-100 rounded-xl font-black text-xs outline-none text-right" value={expenseData.currency} onChange={e => setExpenseData({...expenseData, currency: e.target.value})}>
                       {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
                     </select>
                   </div>
                </div>
                <div className="space-y-1.5 md:col-span-1">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح مصرف (توضیحات)</label>
-                  <input type="text" className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none" placeholder="مثلاً: اجاره، برق، کرایه..." value={expenseData.description} onChange={e => setExpenseData({...expenseData, description: e.target.value})} />
+                  <input type="text" className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none text-right" placeholder="مثلاً: اجاره، برق، کرایه..." value={expenseData.description} onChange={e => setExpenseData({...expenseData, description: e.target.value})} />
                </div>
                <div className="md:col-span-2 pt-2">
                   <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black text-sm shadow-lg shadow-rose-100 flex items-center justify-center gap-2 hover:bg-rose-700 transition-all">
@@ -263,7 +264,6 @@ const Settings: React.FC<SettingsProps> = ({
 
         {activeSubTab === 'security' && (
           <div className="max-w-md mx-auto space-y-10 text-right animate-in zoom-in duration-300">
-            {/* Username Section */}
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
                 <UserIcon className="text-blue-600" size={24} />
@@ -274,12 +274,12 @@ const Settings: React.FC<SettingsProps> = ({
                   <label className="text-xs font-bold text-slate-500 mr-1">نام کاربری فعلی شما</label>
                   <input 
                     type="text" 
-                    className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-blue-500/20" 
+                    className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-blue-500/20 text-right" 
                     value={tempUsername} 
                     onChange={e => setTempUsername(e.target.value)}
                   />
                 </div>
-                <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-transform active:scale-95">
+                <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-transform active:scale-95 text-right">
                   <Save size={18} /> بروزرسانی نام کاربری
                 </button>
               </form>
@@ -287,7 +287,6 @@ const Settings: React.FC<SettingsProps> = ({
 
             <hr className="border-slate-100" />
 
-            {/* Password Section */}
             <div className="space-y-6">
               <div className="flex items-center gap-3 mb-6">
                 <Lock className="text-rose-600" size={24} />
@@ -299,7 +298,7 @@ const Settings: React.FC<SettingsProps> = ({
                   <div className="relative">
                     <input 
                       type={showPass ? "text" : "password"} 
-                      className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-rose-500/20" 
+                      className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-rose-500/20 text-right" 
                       value={newPassword} 
                       onChange={e => setNewPassword(e.target.value)}
                       placeholder="رمز عبور جدید را وارد کنید..."

@@ -6,13 +6,16 @@ import {
 } from 'lucide-react';
 import { Transaction, TransactionType, Customer, SUPPORTED_CURRENCIES, TransactionStatus } from '../types';
 
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+
 interface JournalProps {
   transactions: Transaction[];
   customers: Customer[];
 }
 
 const Journal: React.FC<JournalProps> = ({ transactions, customers }) => {
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date(getSystemNow()));
   const [search, setSearch] = useState('');
 
   const isSameDay = (d1: Date, d2: Date) => {
@@ -39,85 +42,83 @@ const Journal: React.FC<JournalProps> = ({ transactions, customers }) => {
       .sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, selectedDate, search, customers]);
 
-  const dailySummary = useMemo(() => {
-    const profit = dailyTransactions
+  const dailyExchangeProfit = useMemo(() => {
+    return dailyTransactions
       .filter(t => t.type === TransactionType.EXCHANGE && t.status === TransactionStatus.APPROVED)
       .reduce((sum, t) => sum + (t.netProfit || 0), 0);
-    
-    return { profit };
   }, [dailyTransactions]);
 
   const persianDate = selectedDate.toLocaleDateString('fa-IR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-6">
-        <div className="flex items-center gap-4">
-          <button onClick={() => changeDay(1)} className="p-2.5 bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all"><ChevronRight size={20} /></button>
-          <div className="text-center md:text-right min-w-[160px]">
-            <h3 className="text-base font-black text-slate-900">{persianDate}</h3>
-            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">صندوق روزانه</p>
+    <div className="space-y-6 text-right fade-entry">
+      <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex items-center gap-4 order-2 md:order-1">
+          <button onClick={() => changeDay(1)} className="p-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100"><ChevronRight size={16} /></button>
+          <div className="min-w-[150px] text-center">
+            <h3 className="text-sm font-bold text-slate-800">{persianDate}</h3>
+            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">وضعیت دفتر کل روزانه</p>
           </div>
-          <button onClick={() => changeDay(-1)} className="p-2.5 bg-slate-50 text-slate-400 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-all"><ChevronLeft size={20} /></button>
+          <button onClick={() => changeDay(-1)} className="p-2 bg-slate-50 border border-slate-200 rounded hover:bg-slate-100"><ChevronLeft size={16} /></button>
         </div>
 
-        {/* بخش نمایش سود و ضرر روزانه */}
-        <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-1 justify-center lg:justify-start">
-           <div className={`p-2.5 rounded-xl ${dailySummary.profit >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-              {dailySummary.profit >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
-           </div>
-           <div className="text-right">
-              <p className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">خلاصه بیلانس مفاد/ضرر امروز:</p>
-              <h4 className={`text-lg font-black tabular-nums ${dailySummary.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {dailySummary.profit.toLocaleString()}
-                <span className="text-[10px] mr-1 opacity-60">AFN</span>
-                {dailySummary.profit >= 0 ? ' (مفاد)' : ' (ضرر)'}
-              </h4>
-           </div>
+        <div className="flex items-center gap-4 order-3">
+          <div className="bg-emerald-50 border border-emerald-100 px-4 py-2 rounded-lg flex items-center gap-3">
+            <div className="text-right">
+              <span className="block text-[8px] font-black text-emerald-600 uppercase">مفاد خالص تبادلات امروز</span>
+              <span className="block text-sm font-black text-emerald-700 tnum">{dailyExchangeProfit.toLocaleString()} <span className="text-[9px]">AFN</span></span>
+            </div>
+            <TrendingUp size={18} className="text-emerald-500" />
+          </div>
         </div>
 
-        <div className="relative">
-          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-          <input type="text" placeholder="جستجوی سند..." className="bg-slate-50 border border-slate-100 rounded-xl py-2 pr-9 pl-4 text-[11px] font-bold w-56 outline-none focus:bg-white transition-all" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="relative w-full md:w-64 order-1 md:order-2">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+          <input type="text" placeholder="جستجو در اسناد امروز..." className="w-full bg-slate-50 border border-slate-200 rounded py-2 pr-9 pl-3 text-[11px] font-bold outline-none focus:bg-white focus:border-indigo-400" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        <table className="w-full text-right text-xs">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">لیست کلی تراکنش‌ها</h3>
+        </div>
+        <table className="w-full text-right text-[11px] border-collapse">
           <thead>
-            <tr className="bg-slate-50/50 text-slate-400 border-b border-slate-100">
-              <th className="py-4 px-6 font-black text-[9px] uppercase">زمان</th>
-              <th className="py-4 px-4 font-black text-[9px] uppercase">طرف حساب</th>
-              <th className="py-4 px-4 font-black text-[9px] uppercase text-emerald-600">رسید (+)</th>
-              <th className="py-4 px-4 font-black text-[9px] uppercase text-rose-600">برد (-)</th>
-              <th className="py-4 px-4 font-black text-[9px] uppercase">شرح</th>
-              <th className="py-4 px-6 font-black text-[9px] uppercase text-center">وضعیت</th>
+            <tr className="bg-slate-50 text-slate-500 uppercase border-b border-slate-200">
+              <th className="py-3 px-4 font-bold border-l border-slate-100">ساعت</th>
+              <th className="py-3 px-4 font-bold border-l border-slate-100">طرف حساب</th>
+              <th className="py-3 px-4 font-bold text-emerald-700 border-l border-slate-100">رسید (+)</th>
+              <th className="py-3 px-4 font-bold text-rose-700 border-l border-slate-100">برد (-)</th>
+              <th className="py-3 px-4 font-bold">شرح تراکنش</th>
+              <th className="py-3 px-4 font-bold text-center">وضعیت</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-slate-100">
             {dailyTransactions.map(t => {
               const customer = customers.find(c => c.id === t.customerId);
-              const displayName = customer?.name || t.guestName || 'تراکنش آزاد';
+              const displayName = customer?.name || t.guestName || 'تراکنش آزاد نقد';
               return (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="py-4 px-6 text-slate-400 font-mono text-[10px] tnum">{new Date(t.timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</td>
-                  <td className="py-4 px-4 font-black text-slate-800 text-[12px]">{displayName}</td>
-                  <td className="py-4 px-4 font-black text-[13px] text-emerald-600 tnum">{t.type === TransactionType.RESID ? `${t.amount.toLocaleString()} ${t.currency}` : '-'}</td>
-                  <td className="py-4 px-4 font-black text-[13px] text-rose-600 tnum">{t.type === TransactionType.BOARD ? `${t.amount.toLocaleString()} ${t.currency}` : '-'}</td>
-                  <td className="py-4 px-4 text-slate-500 font-medium truncate max-w-[180px] text-[10px]">
-                    {t.description || '---'}
-                    {t.netProfit ? <span className="mr-2 text-[8px] text-emerald-500 bg-emerald-50 px-1 rounded">(مفاد: {t.netProfit.toLocaleString()})</span> : null}
+                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="py-3 px-4 text-slate-400 font-mono tnum">{new Date(t.timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="py-3 px-4 font-bold text-slate-800">{displayName}</td>
+                  <td className="py-3 px-4 font-bold text-emerald-700 tnum">{t.type === TransactionType.RESID ? `${t.amount.toLocaleString()} ${t.currency}` : '-'}</td>
+                  <td className="py-3 px-4 font-bold text-rose-700 tnum">{t.type === TransactionType.BOARD ? `${t.amount.toLocaleString()} ${t.currency}` : '-'}</td>
+                  <td className="py-3 px-4 text-slate-500 font-medium truncate max-w-[250px] text-[10px]">
+                    {t.description || 'بدون توضیحات'}
+                    {t.type === TransactionType.EXCHANGE && t.netProfit && (
+                      <span className="mr-2 text-emerald-600 font-bold">(سود: {t.netProfit.toLocaleString()})</span>
+                    )}
                   </td>
-                  <td className="py-4 px-6 text-center">
-                    <span className={`px-2 py-1 rounded-lg text-[8px] font-black ${t.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : t.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
-                      {t.status === 'approved' ? 'تائید' : t.status === 'pending' ? 'انتظار' : 'رد'}
+                  <td className="py-3 px-4 text-center">
+                    <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${t.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-amber-50 text-amber-700 border border-amber-100'}`}>
+                      {t.status === 'approved' ? 'تائید' : 'انتظار'}
                     </span>
                   </td>
                 </tr>
               );
             })}
             {dailyTransactions.length === 0 && (
-              <tr><td colSpan={6} className="py-12 text-center text-slate-300 font-bold italic text-[11px]">در این تاریخ تراکنشی ثبت نشده است.</td></tr>
+              <tr><td colSpan={6} className="py-20 text-center text-slate-300 font-bold italic">هیچ تراکنشی برای نمایش در این تاریخ وجود ندارد.</td></tr>
             )}
           </tbody>
         </table>

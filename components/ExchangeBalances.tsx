@@ -2,34 +2,36 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { 
   ArrowRightLeft, TrendingUp, Clock, 
-  ChevronRight, ChevronLeft, Target, Activity, ShieldCheck, Coins, Sparkles,
-  BarChart3, PieChart, TrendingDown, DollarSign, Info, Calculator, 
-  ArrowRight, RefreshCw, CheckCircle2, AlertCircle, X, Landmark, Wallet
+  ChevronRight, ChevronLeft, Calculator, 
+  ArrowRight, RefreshCw, X, Wallet
 } from 'lucide-react';
-import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate, BankAccount, Customer } from '../types';
+import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate, Customer } from '../types';
+
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
 
 interface ExchangeBalancesProps {
   transactions: Transaction[];
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   globalRates: GlobalRate[];
-  bankAccounts: BankAccount[];
   customers: Customer[];
 }
 
-const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTransactions, globalRates, bankAccounts, customers }) => {
-  const [selectedDate, setSelectedDate] = useState(new Date());
+const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTransactions, globalRates, customers }) => {
+  const [selectedDate, setSelectedDate] = useState(new Date(getSystemNow()));
   
-  // States for Calculator
+  // States for Calculator (The "Two-Door" Machine)
   const [fromCurr, setFromCurr] = useState('USD');
   const [toCurr, setToCurr] = useState('AFN');
   const [amount, setAmount] = useState<number>(0);
   const [rate, setRate] = useState<number>(0);
   const [op, setOp] = useState<'multiply' | 'divide'>('multiply');
+  const [profit, setProfit] = useState<number>(0);
+  const [profitCategory, setProfitCategory] = useState('None');
   const [isGuest, setIsGuest] = useState(true);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [guestName, setGuestName] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
-  const [selectedBankId, setSelectedBankId] = useState('');
 
   useEffect(() => {
     if (fromCurr === 'USD' && toCurr === 'AFN') {
@@ -54,20 +56,21 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
 
   const handleExchange = () => {
     if (amount <= 0 || rate <= 0 || fromCurr === toCurr) {
-      alert("لطفاً مقادیر را به درستی وارد کنید.");
+      alert("Please enter valid amounts.");
       return;
     }
     if (!isGuest && !selectedCustomerId) {
-      alert("مشتری را انتخاب کنید.");
+      alert("Select a customer.");
       return;
     }
     if (isGuest && !guestName) {
-      alert("نام مشتری راه‌روی را وارد کنید.");
+      alert("Enter guest name.");
       return;
     }
 
     const exchangeId = 'EX-' + Math.random().toString(36).substr(2, 5).toUpperCase();
     
+    // Strictly separate from bank: isBank is always false for this machine
     const transaction: Transaction = {
       id: exchangeId,
       customerId: isGuest ? undefined : selectedCustomerId,
@@ -78,19 +81,22 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
       targetCurrency: toCurr,
       exchangeRate: rate,
       convertedAmount: convertedAmount,
-      description: `تبادله ${amount} ${fromCurr} به ${toCurr} با نرخ ${rate} (${op === 'multiply' ? 'ضرب' : 'تقسیم'})`,
-      timestamp: Date.now(),
+      netProfit: profit,
+      profitCategory: profitCategory,
+      description: `Exchange ${amount} ${fromCurr} to ${toCurr} (Category: ${profitCategory})`,
+      timestamp: getSystemNow(),
       status: TransactionStatus.PENDING,
-      isBank: fromCurr.includes('BANK') || toCurr.includes('BANK') || selectedBankId !== '',
-      bankAccountId: selectedBankId || undefined,
+      isBank: false
     };
 
     setTransactions(prev => [...prev, transaction]);
     setAmount(0);
+    setProfit(0);
+    setProfitCategory('None');
     setGuestName('');
     setCustomerSearch('');
     setSelectedCustomerId('');
-    alert("تبادله ثبت و برای تائید مدیر ارسال شد.");
+    alert("Transaction recorded in the Drawer.");
   };
 
   const dailyStats = useMemo(() => {
@@ -115,34 +121,34 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
         
         <div className="lg:col-span-5 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8 h-fit sticky top-24">
            <div className="flex items-center gap-3 border-b border-slate-50 pb-6">
-              <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100">
+              <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg">
                 <Calculator size={24} />
               </div>
               <div>
-                 <h3 className="text-xl font-black text-slate-900">ماشین‌حساب تبادله صرافی</h3>
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Professional Exchange Module</p>
+                 <h3 className="text-xl font-black text-slate-900">Exchange Machine (Drawer)</h3>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Independent Cash Logic</p>
               </div>
            </div>
 
            <div className="space-y-6 text-right">
               <div className="flex bg-slate-50 p-1 rounded-2xl border border-slate-100">
-                 <button onClick={() => setIsGuest(true)} className={`flex-1 py-3 rounded-xl font-black text-[11px] transition-all ${isGuest ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>مشتری راه‌روی</button>
-                 <button onClick={() => setIsGuest(false)} className={`flex-1 py-3 rounded-xl font-black text-[11px] transition-all ${!isGuest ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>مشتری دائمی</button>
+                 <button onClick={() => setIsGuest(true)} className={`flex-1 py-3 rounded-xl font-black text-[11px] transition-all ${isGuest ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Guest Receipt</button>
+                 <button onClick={() => setIsGuest(false)} className={`flex-1 py-3 rounded-xl font-black text-[11px] transition-all ${!isGuest ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Customer</button>
               </div>
 
               {isGuest ? (
                 <div className="space-y-1.5">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">نام مشتری راه‌روی</label>
-                   <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" placeholder="نام را وارد کنید..." value={guestName} onChange={e => setGuestName(e.target.value)} />
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Guest Name</label>
+                   <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none text-right" placeholder="Name..." value={guestName} onChange={e => setGuestName(e.target.value)} />
                 </div>
               ) : (
                 <div className="space-y-1.5 relative">
-                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">جستجوی مشتری</label>
-                   <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none" placeholder="نام یا کد..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
+                   <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Search Customer</label>
+                   <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold outline-none text-right" placeholder="Search..." value={customerSearch} onChange={e => setCustomerSearch(e.target.value)} />
                    {filteredCustomers.length > 0 && (
-                      <div className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-xl max-h-40 overflow-y-auto p-1">
+                      <div className="absolute z-10 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-xl max-h-40 overflow-y-auto p-1 text-right">
                         {filteredCustomers.map(c => (
-                           <button key={c.id} onClick={() => { setSelectedCustomerId(c.id); setCustomerSearch(c.name); }} className="w-full p-3 text-right text-xs font-bold hover:bg-slate-50 rounded-lg">{c.name} ({c.code})</button>
+                           <button key={c.id} onClick={() => { setSelectedCustomerId(c.id); setCustomerSearch(c.name); }} className="w-full p-3 text-right text-xs font-bold hover:bg-slate-50 rounded-lg">{c.name}</button>
                         ))}
                       </div>
                    )}
@@ -150,38 +156,38 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
               )}
 
               <div className="space-y-3">
-                 <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">ارز مبدا (صرافی می‌گیرد)</span>
+                 <div className="flex justify-between items-center text-right">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">From Currency (The First Door)</span>
                  </div>
                  <div className="grid grid-cols-5 gap-2">
                     {SUPPORTED_CURRENCIES.map(c => (
-                      <button key={c.code} onClick={() => setFromCurr(c.code)} className={`py-2 rounded-xl text-[10px] font-black transition-all border ${fromCurr === c.code ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-slate-50 border-transparent text-slate-400'}`}>{c.label}</button>
+                      <button key={c.code} onClick={() => setFromCurr(c.code)} className={`py-2 rounded-xl text-[10px] font-black transition-all border ${fromCurr === c.code ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-transparent text-slate-400'}`}>{c.label}</button>
                     ))}
                  </div>
                  <input type="number" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-black text-right outline-none focus:bg-white" placeholder="0.00" value={amount || ''} onChange={e => setAmount(Number(e.target.value))} />
               </div>
 
               <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 space-y-3">
-                 <div className="flex items-center justify-between">
+                 <div className="flex items-center justify-between text-right">
                     <div className="flex items-center gap-2">
                        <div className="p-2 bg-white rounded-lg text-blue-600 shadow-sm"><RefreshCw size={14} /></div>
-                       <span className="text-[10px] font-black text-blue-900">نرخ تبدیل نهایی:</span>
+                       <span className="text-[10px] font-black text-blue-900">Exchange Rate:</span>
                     </div>
                     <div className="flex bg-white p-1 rounded-xl border border-blue-100">
-                       <button type="button" onClick={() => setOp('multiply')} className={`px-4 py-2 rounded-lg font-black text-xs transition-all ${op === 'multiply' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}>×</button>
-                       <button type="button" onClick={() => setOp('divide')} className={`px-4 py-2 rounded-lg font-black text-xs transition-all ${op === 'divide' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-50'}`}>÷</button>
+                       <button type="button" onClick={() => setOp('multiply')} className={`px-4 py-2 rounded-lg font-black text-xs transition-all ${op === 'multiply' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>×</button>
+                       <button type="button" onClick={() => setOp('divide')} className={`px-4 py-2 rounded-lg font-black text-xs transition-all ${op === 'divide' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>÷</button>
                     </div>
                  </div>
                  <input type="number" className="w-full p-4 bg-white border border-blue-100 rounded-xl text-center font-black text-2xl outline-none text-blue-600" value={rate || ''} onChange={e => setRate(Number(e.target.value))} placeholder="0.00" />
               </div>
 
               <div className="space-y-3">
-                 <div className="flex justify-between items-center">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">ارز مقصد (مشتری می‌گیرد)</span>
+                 <div className="flex justify-between items-center text-right">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">To Currency (The Second Door)</span>
                  </div>
                  <div className="grid grid-cols-5 gap-2">
                     {SUPPORTED_CURRENCIES.map(c => (
-                      <button key={c.code} disabled={fromCurr === c.code} onClick={() => setToCurr(c.code)} className={`py-2 rounded-xl text-[10px] font-black transition-all border ${toCurr === c.code ? 'bg-slate-900 border-slate-900 text-white shadow-md' : 'bg-slate-50 border-transparent text-slate-400 disabled:opacity-20'}`}>{c.label}</button>
+                      <button key={c.code} disabled={fromCurr === c.code} onClick={() => setToCurr(c.code)} className={`py-2 rounded-xl text-[10px] font-black transition-all border ${toCurr === c.code ? 'bg-slate-900 border-slate-900 text-white' : 'bg-slate-50 border-transparent text-slate-400 disabled:opacity-20'}`}>{c.label}</button>
                     ))}
                  </div>
                  <div className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-right">
@@ -190,8 +196,24 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
                  </div>
               </div>
 
-              <button onClick={handleExchange} className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg shadow-xl shadow-blue-900/10 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
-                 <ArrowRightLeft size={20} /> ثبت و تائید تبادله
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5 text-right">
+                   <label className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mr-1">Benefit (AFN)</label>
+                   <input type="number" className="w-full p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-lg font-black outline-none text-emerald-700 text-right" placeholder="0" value={profit || ''} onChange={e => setProfit(Number(e.target.value))} />
+                </div>
+                <div className="space-y-1.5 text-right">
+                   <label className="text-[9px] font-black text-blue-600 uppercase tracking-widest mr-1">Benefit Category</label>
+                   <select className="w-full p-4 bg-blue-50 border border-blue-100 rounded-xl font-black text-[10px] outline-none" value={profitCategory} onChange={e => setProfitCategory(e.target.value)}>
+                      <option value="None">None</option>
+                      <option value="High-pull, one hundred dollars">High-pull, one hundred dollars</option>
+                      <option value="High-pull, but not one hundred dollars">High-pull, but not one hundred dollars</option>
+                      <option value="Afghan dollar, cash, bank, and credit">Afghan dollar, cash, bank, and credit</option>
+                   </select>
+                </div>
+              </div>
+
+              <button onClick={handleExchange} className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3">
+                 <ArrowRightLeft size={20} /> Record Exchange in Drawer
               </button>
            </div>
         </div>
@@ -199,13 +221,13 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
         <div className="lg:col-span-7 space-y-8">
            <div className="bg-slate-950 p-10 rounded-[3rem] text-white flex flex-col md:flex-row justify-between items-center gap-8 shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 right-0 p-8 opacity-5"><TrendingUp size={120} /></div>
-              <div className="relative z-10">
-                 <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-2">سود خالص امروز</p>
+              <div className="relative z-10 text-right">
+                 <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] mb-2">Benefit Total (Today)</p>
                  <h4 className="text-5xl font-black text-emerald-400 tabular-nums">{dailyStats.totalProfit.toLocaleString()} <span className="text-sm">AFN</span></h4>
               </div>
               <div className="relative z-10 flex gap-4">
                  <div className="bg-white/5 border border-white/10 p-5 rounded-3xl text-center min-w-[120px]">
-                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">کل تبادلات</p>
+                    <p className="text-[8px] font-black text-slate-500 uppercase mb-1">Drawer Ops</p>
                     <p className="text-2xl font-black">{dailyStats.count}</p>
                  </div>
               </div>
@@ -214,7 +236,7 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
            <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100">
               <div className="flex justify-between items-center mb-8">
                  <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Clock size={20} className="text-slate-400" /> تاریخچه تبادلات
+                    <Clock size={20} className="text-slate-400" /> Drawer History
                  </h3>
                  <div className="flex items-center gap-3 bg-slate-50 p-1 rounded-xl">
                     <button onClick={() => {
@@ -234,34 +256,30 @@ const ExchangeBalances: React.FC<ExchangeBalancesProps> = ({ transactions, setTr
               <div className="space-y-4">
                  {transactions.filter(t => t.type === TransactionType.EXCHANGE && new Date(t.timestamp).toDateString() === selectedDate.toDateString()).sort((a,b) => b.timestamp - a.timestamp).map(t => (
                    <div key={t.id} className="p-6 bg-slate-50 border border-slate-100 rounded-[2rem] hover:bg-white hover:shadow-lg transition-all border-r-4 border-r-blue-500">
-                      <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                         <div className="flex items-center gap-6">
-                            <div className="text-right">
-                               <p className="font-black text-slate-900 text-sm">{t.guestName || customers.find(c => c.id === t.customerId)?.name}</p>
-                               <div className="flex items-center gap-2 mt-1">
-                                  <span className="text-[9px] font-bold text-slate-400">{new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour:'2-digit', minute:'2-digit'})}</span>
-                                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-md ${t.status === TransactionStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                     {t.status === TransactionStatus.APPROVED ? 'تائید شده' : 'در انتظار'}
-                                  </span>
-                               </div>
+                      <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-right">
+                         <div>
+                            <p className="font-black text-slate-900 text-sm">{t.guestName || customers.find(c => c.id === t.customerId)?.name}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                               <span className="text-[9px] font-bold text-slate-400">{new Date(t.timestamp).toLocaleTimeString('fa-IR')}</span>
+                               {t.profitCategory && <span className="text-[8px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black">{t.profitCategory}</span>}
                             </div>
                          </div>
                          
                          <div className="flex items-center gap-8">
                             <div className="text-center">
-                               <p className="text-[9px] font-black text-slate-400 uppercase">تبدیل شده</p>
-                               <p className="text-sm font-black text-slate-900">-{t.amount.toLocaleString()} <span className="text-[10px] text-rose-500 uppercase">{t.currency}</span></p>
+                               <p className="text-[9px] font-black text-slate-400 uppercase">From Drawer</p>
+                               <p className="text-sm font-black text-rose-600">-{t.amount.toLocaleString()} {t.currency}</p>
                             </div>
                             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><ArrowRight size={14}/></div>
                             <div className="text-center">
-                               <p className="text-[9px] font-black text-slate-400 uppercase">دریافت شده</p>
-                               <p className="text-sm font-black text-slate-900">+{t.convertedAmount?.toLocaleString()} <span className="text-[10px] text-emerald-500 uppercase">{t.targetCurrency}</span></p>
+                               <p className="text-[9px] font-black text-slate-400 uppercase">To Drawer</p>
+                               <p className="text-sm font-black text-emerald-600">+{t.convertedAmount?.toLocaleString()} {t.targetCurrency}</p>
                             </div>
                          </div>
 
-                         <div className="text-left border-r border-slate-200 pr-6">
-                            <p className="text-[8px] font-black text-slate-400 uppercase mb-1">Rate</p>
-                            <p className="text-sm font-black text-blue-600">1 {t.exchangeRate}</p>
+                         <div className="text-left">
+                            <p className="text-[8px] font-black text-slate-400 uppercase">Rate</p>
+                            <p className="text-sm font-black text-blue-600">{t.exchangeRate}</p>
                          </div>
                       </div>
                    </div>

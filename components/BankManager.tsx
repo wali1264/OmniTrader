@@ -7,6 +7,9 @@ import {
 } from 'lucide-react';
 import { BankAccount, Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from '../types';
 
+const SYSTEM_TIME_OFFSET = 3600000;
+const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+
 interface BankManagerProps {
   bankAccounts: BankAccount[];
   setBankAccounts: React.Dispatch<React.SetStateAction<BankAccount[]>>;
@@ -90,7 +93,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     
     if (!sourceBank || !targetBank) return;
 
-    const timestamp = Date.now();
+    const timestamp = getSystemNow();
     const transferGroupId = Math.random().toString(36).substr(2, 5).toUpperCase();
     
     const commissionAmount = (transferData.amount * transferData.commissionPercent) / 100;
@@ -157,7 +160,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       cardLastFour: formData.cardLastFour,
       trackingId: formData.trackingId,
       description: formData.description || (isPending ? `واریزی در حال انتظار (مجهول)` : `رسید بانکی مشتری`),
-      timestamp: Date.now(),
+      timestamp: getSystemNow(),
       status: TransactionStatus.PENDING
     };
 
@@ -197,26 +200,28 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {bankAccounts.map(account => (
-            <button key={account.id} onClick={() => setActiveBank(account)} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all text-right group relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-2 h-full bg-blue-600 group-hover:w-4 transition-all"></div>
-              <div className="flex justify-between items-start mb-10">
-                 <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all"><Landmark size={32} /></div>
-                 <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-all" />
-              </div>
-              <h3 className="text-2xl font-black text-slate-900">{account.bankName}</h3>
-              <p className="text-sm font-mono text-slate-400 mt-2 tracking-widest">{account.accountNumber}</p>
-              <div className="mt-8 pt-8 border-t border-slate-50 flex justify-between items-baseline">
-                 <p className="text-[10px] font-black text-slate-400 uppercase">موجودی فعلی:</p>
-                 <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-black text-slate-900">
-                      {(transactions.filter(t => t.bankAccountId === account.id && t.status === TransactionStatus.APPROVED).reduce((sum, t) => sum + (t.type === TransactionType.RESID ? t.amount : -t.amount), account.balance)).toLocaleString()}
-                    </span>
+          {bankAccounts.map(account => {
+            const approved = transactions.filter(t => t.bankAccountId === account.id && t.status === TransactionStatus.APPROVED);
+            const balance = approved.reduce((sum, t) => sum + (t.type === TransactionType.RESID ? t.amount : -t.amount), account.balance);
+            return (
+              <button key={account.id} onClick={() => setActiveBank(account)} className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all text-right group relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-2 h-full bg-blue-600 group-hover:w-4 transition-all"></div>
+                <div className="flex justify-between items-start mb-10">
+                  <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-all"><Landmark size={32} /></div>
+                  <ChevronRight className="text-slate-200 group-hover:text-blue-600 transition-all" />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900">{account.bankName}</h3>
+                <p className="text-sm font-mono text-slate-400 mt-2 tracking-widest">{account.accountNumber}</p>
+                <div className="mt-8 pt-8 border-t border-slate-50 flex justify-between items-baseline">
+                  <p className="text-[10px] font-black text-slate-400 uppercase">موجودی فعلی:</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-slate-900">{balance.toLocaleString()}</span>
                     <span className="text-xs font-black text-blue-600">{account.currency}</span>
-                 </div>
-              </div>
-            </button>
-          ))}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {showAddBankModal && (
@@ -438,7 +443,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
          </div>
       </div>
 
-      {/* مودال انتقال بین بانکی */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
            <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in text-right">
@@ -451,10 +455,10 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
               </div>
 
               <form onSubmit={handleTransfer} className="space-y-6">
-                 <div className="space-y-1.5">
+                 <div className="space-y-1.5 text-right">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">حساب مبدأ (فرستنده)</label>
                     <select 
-                       className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
+                       className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-right"
                        value={transferData.sourceBankId}
                        onChange={e => setTransferData({...transferData, sourceBankId: e.target.value})}
                        required
@@ -466,10 +470,10 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                     </select>
                  </div>
 
-                 <div className="space-y-1.5">
+                 <div className="space-y-1.5 text-right">
                     <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mr-1">حساب مقصد (گیرنده)</label>
                     <select 
-                       className="w-full p-4 bg-white border border-blue-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all"
+                       className="w-full p-4 bg-white border border-blue-100 rounded-xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-500/10 transition-all text-right"
                        value={transferData.targetBankId}
                        onChange={e => setTransferData({...transferData, targetBankId: e.target.value})}
                        required
@@ -481,7 +485,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                     </select>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-2 gap-4 text-right">
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ انتقال</label>
                         <input 
@@ -509,7 +513,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                  </div>
 
                  {(transferData.amount > 0 && transferData.commissionPercent > 0) && (
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2">
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-2 text-right">
                         <div className="flex justify-between text-[10px] font-bold">
                             <span className="text-slate-400 uppercase">مبلغ کمیشن:</span>
                             <span className="text-rose-600 tabular-nums">{modalCommissionAmount.toLocaleString()}</span>
@@ -521,7 +525,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                     </div>
                  )}
 
-                 <div className="space-y-1.5">
+                 <div className="space-y-1.5 text-right">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح انتقال (بابت...)</label>
                     <textarea 
                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold text-xs outline-none focus:bg-white transition-all text-right"
@@ -542,7 +546,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       {showAssignModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4 text-right">
           <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in">
-            <div className="flex justify-between items-center mb-8">
+            <div className="flex justify-between items-center mb-8 text-right">
                 <div>
                     <h3 className="text-3xl font-black">تخصیص به مشتری</h3>
                     <p className="text-sm text-slate-400 mt-1">مبلغ {showAssignModal.amount.toLocaleString()} {showAssignModal.currency} به حساب چه کسی ثبت شود؟</p>
@@ -550,12 +554,12 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                 <button onClick={() => setShowAssignModal(null)} className="p-3 bg-slate-100 rounded-full hover:bg-rose-50 hover:text-rose-500 transition-all"><X size={24} /></button>
             </div>
             
-            <div className="relative mb-6">
+            <div className="relative mb-6 text-right">
                 <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                <input type="text" placeholder="جستجوی مشتری..." className="w-full bg-slate-50 p-6 pr-14 rounded-3xl font-bold border border-slate-100 focus:bg-white focus:ring-4 focus:ring-blue-100 outline-none transition-all" value={searchCustomer} onChange={e => setSearchCustomer(e.target.value)} />
+                <input type="text" placeholder="جستجوی مشتری..." className="w-full bg-slate-50 p-6 pr-14 rounded-3xl font-bold border border-slate-100 focus:bg-white focus:ring-4 focus:ring-blue-100 outline-none transition-all text-right" value={searchCustomer} onChange={e => setSearchCustomer(e.target.value)} />
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar text-right">
               {filteredCustomers.map(c => (
                 <button key={c.id} onClick={() => handleAssignToCustomer(c)} className="w-full p-6 bg-slate-50 rounded-3xl flex justify-between items-center hover:bg-blue-600 hover:text-white group transition-all">
                   <div className="text-right">
