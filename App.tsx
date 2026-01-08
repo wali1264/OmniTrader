@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
   Settings as SettingsIcon, Briefcase, PieChart, Landmark, Sparkles, Zap,
-  ArrowRightLeft, CreditCard, Printer, UserPlus
+  ArrowRightLeft, CreditCard, Printer, UserPlus, ShieldCheck
 } from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate, BankAccount } from './types';
 import Dashboard from './components/Dashboard';
@@ -28,7 +28,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginError, setLoginError] = useState('');
-  const [shopName, setShopName] = useState(() => localStorage.getItem('s_shopName') || 'صرافی جاوید');
+  const [shopName, setShopName] = useState(() => localStorage.getItem('s_shopName') || 'صرافی جاوید (Sarrafi Pro)');
 
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('s_users');
@@ -97,20 +97,31 @@ const App: React.FC = () => {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 font-['Vazirmatn']" dir="rtl">
-        <div className="w-full max-w-sm bg-[#0f172a] p-10 rounded-2xl border border-slate-800 shadow-2xl">
+        <div className="w-full max-w-sm bg-[#0f172a] p-10 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-full h-1 bg-blue-600"></div>
           <div className="flex justify-center mb-8">
             <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-              <Landmark size={28} />
+              <ShieldCheck size={28} />
             </div>
           </div>
-          <h1 className="text-xl font-bold text-white text-center mb-1">سامانه مدیریتی صرافی</h1>
-          <p className="text-slate-500 text-center text-[10px] mb-8 uppercase tracking-widest font-bold">Secure Access Gateway</p>
+          <h1 className="text-xl font-bold text-white text-center mb-1">پنل کاربری سیستم مدیریت</h1>
+          <p className="text-slate-500 text-center text-[10px] mb-8 uppercase tracking-widest font-bold">Official Access Terminal</p>
           <form onSubmit={handleLogin} className="space-y-4">
-            <input type="text" required placeholder="نام کاربری" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
+            <input type="text" required placeholder="شناسه کاربری" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
             <input type="password" required placeholder="رمز عبور" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-            <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-xl hover:bg-blue-700 transition-all mt-4">ورود ایمن</button>
+            
+            {/* نمایش رسمی برند شرکت سازنده زیر فیلد رمز عبور */}
+            <div className="py-4 flex flex-col items-center border-t border-slate-800/50 mt-2">
+               <span className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Developed By</span>
+               <h2 className="text-[10px] font-black text-blue-500 text-center leading-tight uppercase tracking-wider">Meraj Salehi Production and Programming Company</h2>
+            </div>
+
+            <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-xl hover:bg-blue-700 transition-all">تائید و ورود به سامانه</button>
             {loginError && <p className="text-rose-500 text-center text-xs font-bold mt-4">{loginError}</p>}
           </form>
+          <div className="mt-8 text-center">
+             <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">Powered by Advanced Ledger v3.5</p>
+          </div>
         </div>
       </div>
     );
@@ -120,9 +131,12 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-slate-50 overflow-hidden font-['Vazirmatn']" dir="rtl">
       <aside className="w-60 bg-[#0f172a] text-white flex flex-col shrink-0 print:hidden">
         <div className="p-6 flex flex-col h-full">
-          <div className="flex items-center gap-3 mb-8 pb-6 border-b border-slate-800">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-sm"><Briefcase size={16} /></div>
-            <h1 className="text-[12px] font-black truncate text-slate-100">{shopName}</h1>
+          <div className="flex flex-col items-center gap-2 mb-8 pb-6 border-b border-slate-800">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-sm mb-2"><Briefcase size={20} /></div>
+            <div className="text-center">
+              <h1 className="text-[11px] font-black text-slate-100 uppercase tracking-wide">{shopName}</h1>
+              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Official Management Suite</span>
+            </div>
           </div>
           <nav className="space-y-1 flex-1 overflow-y-auto custom-scrollbar pr-0">
             <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard size={16} />} label="داشبورد آماری" />
@@ -139,7 +153,14 @@ const App: React.FC = () => {
             <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={16} />} label="تراز دارایی‌ها" />
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={16} />} label="تنظیمات سیستم" />
           </nav>
-          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-3 mt-auto rounded-xl hover:bg-slate-900 transition-all">
+          
+          {/* نمایش برند شرکت در انتهای سایدبار */}
+          <div className="mt-auto pt-6 border-t border-slate-800 text-center pb-2">
+            <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.1em] mb-1">Powered By</p>
+            <p className="text-[9px] font-bold text-blue-400 leading-tight">Meraj Salehi Production and Programming Company</p>
+          </div>
+
+          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-3 rounded-xl hover:bg-slate-900 transition-all">
             <LogOut size={16} /> <span className="text-[11px] font-bold">خروج از پنل</span>
           </button>
         </div>
@@ -149,8 +170,10 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center print:hidden">
           <div className="flex items-center gap-4">
             <div className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-               <p className="text-[10px] font-bold text-slate-500 uppercase">System Status: <span className="text-emerald-600">Active</span></p>
+               <p className="text-[10px] font-bold text-slate-500 uppercase">System Status: <span className="text-emerald-600">Active / Operational</span></p>
             </div>
+            <div className="h-4 w-px bg-slate-200"></div>
+            <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{shopName}</h2>
           </div>
           <div className="flex items-center gap-4">
              <div className="text-right">
