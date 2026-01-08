@@ -23,7 +23,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
   const cashMovements = useMemo(() => {
     return transactions.filter(t => 
       t.status === TransactionStatus.APPROVED &&
-      !t.isBank && // نمایش اختصاصی تراکنش‌های نقدی (جدا از بانک)
+      !t.isBank && 
       (
         (t.customerId && customers.find(c => c.id === t.customerId)?.name.includes(searchTerm)) || 
         (t.guestName && t.guestName.includes(searchTerm)) ||
@@ -48,7 +48,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 print:hidden">
         <div className="lg:col-span-1 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
            <div className="absolute top-0 right-0 p-6 opacity-10"><Briefcase size={80} /></div>
-           <div className="relative z-10">
+           <div className="relative z-10 text-right">
               <h3 className="text-xl font-black mb-1">Drawer (صندوق نقد)</h3>
               <div className="mt-8">
                  <p className="text-[10px] text-slate-500 mb-1">صندوقدار فعلی:</p>
@@ -57,7 +57,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
            </div>
         </div>
 
-        <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+        <div className="lg:col-span-3 bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-right">
            <div className="flex justify-between items-center mb-6">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <Wallet size={14} className="text-blue-500" /> موجودی لحظه‌ای فیزیکی صندوق (بدون بانک)
@@ -67,14 +67,14 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                   <span className="block text-[8px] font-black text-emerald-600 uppercase">مفاد نقدینگی امروز</span>
                   <span className="block text-sm font-black text-emerald-700 tnum">{cashProfit.toLocaleString()} <span className="text-[9px]">AFN</span></span>
                 </div>
-                <TrendingUp size={16} className="text-emerald-500" />
+                <div className="p-1.5 bg-emerald-500 text-white rounded-lg"><TrendingUp size={14} /></div>
               </div>
            </div>
            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {SUPPORTED_CURRENCIES.map(curr => (
                 <div key={curr.code} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <p className="text-[9px] font-black text-slate-400 uppercase mb-1">{curr.label}</p>
-                  <p className="text-lg font-black text-slate-900">{(stats.cashBox[curr.code] || 0).toLocaleString()}</p>
+                  <p className="text-sm font-black text-slate-900 tnum">{(stats.cashBox[curr.code] || 0).toLocaleString()}</p>
                 </div>
               ))}
            </div>
@@ -86,16 +86,16 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
         <div className="xl:col-span-2 space-y-6 print:hidden">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
              <div className="flex justify-between items-center mb-8">
-                <div>
+                <div className="text-right">
                    <h3 className="text-xl font-black text-slate-900">روزنامچه اختصاصی صندوق (فقط نقد)</h3>
-                   <p className="text-[10px] text-slate-400 font-bold mt-1">تراکنش‌های بانکی در این بخش نمایش داده نمی‌شوند.</p>
+                   <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-widest">Only Cash Transactions</p>
                 </div>
                 <div className="relative">
                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
                    <input 
                      type="text" 
                      placeholder="جستجو در نقدی..." 
-                     className="bg-slate-50 border border-slate-100 rounded-xl py-2.5 pr-12 pl-4 text-xs font-bold outline-none focus:bg-white transition-all" 
+                     className="bg-slate-50 border border-slate-100 rounded-xl py-2.5 pr-12 pl-4 text-[11px] font-bold outline-none focus:bg-white transition-all text-right" 
                      value={searchTerm}
                      onChange={e => setSearchTerm(e.target.value)}
                    />
@@ -117,21 +117,21 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                               {t.type === TransactionType.RESID ? <ArrowDownLeft size={20} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={20} /> : <CheckCircle size={20} />}
                            </div>
                            <div className="text-right">
-                              <p className="font-black text-base">{displayName}</p>
+                              <p className="font-black text-sm">{displayName}</p>
                               <div className="flex items-center gap-2 mt-0.5">
-                                 <p className="text-[10px] opacity-60">
+                                 <p className="text-[9px] opacity-60 font-bold tnum">
                                     {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
                                  </p>
                                  {t.type === TransactionType.EXCHANGE && (
-                                   <span className={`text-[8px] font-black px-1.5 py-0.5 rounded ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>تبادله نقد</span>
+                                   <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>تبادله نقد</span>
                                  )}
                               </div>
                            </div>
                         </div>
                         <div className="text-left flex flex-col items-end">
-                           <p className="text-lg font-black tabular-nums">{t.amount.toLocaleString()} <span className="text-xs uppercase">{t.currency}</span></p>
+                           <p className="text-sm font-black tnum">{t.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-60">{t.currency}</span></p>
                            {t.type === TransactionType.EXCHANGE && t.netProfit && (
-                             <p className={`text-[9px] font-bold ${selectedReceipt?.id === t.id ? 'text-white' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN مفاد</p>
+                             <p className={`text-[9px] font-bold ${selectedReceipt?.id === t.id ? 'text-white' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN</p>
                            )}
                         </div>
                      </button>
@@ -151,51 +151,51 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                    <div className="flex justify-between items-center pb-8 border-b-2 border-dashed border-slate-100">
                       <div className="flex items-center gap-3">
                          <div className="w-12 h-12 bg-slate-900 text-white flex items-center justify-center rounded-2xl font-black italic">J</div>
-                         <div>
-                            <h4 className="font-black text-slate-900 leading-none">{shopName}</h4>
-                            <p className="text-[8px] font-black text-slate-400 uppercase mt-1 text-right">Cash Receipt (Drawer)</p>
+                         <div className="text-right">
+                            <h4 className="font-black text-slate-900 leading-none text-xs">{shopName}</h4>
+                            <p className="text-[8px] font-black text-slate-400 uppercase mt-1 text-right tracking-widest">Cash Receipt (Drawer)</p>
                          </div>
                       </div>
                       <div className="text-left">
-                         <p className="text-sm font-black text-slate-900 font-mono"># {selectedReceipt.id.toUpperCase()}</p>
+                         <p className="text-xs font-black text-slate-900 font-mono"># {selectedReceipt.id.toUpperCase()}</p>
                       </div>
                    </div>
 
                    <div className="space-y-8">
                       <div className="flex justify-between items-center bg-slate-50 p-6 rounded-[2rem]">
-                         <span className={`px-4 py-1.5 rounded-full text-xs font-black ${selectedReceipt.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-700' : selectedReceipt.type === TransactionType.BOARD ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {selectedReceipt.type === TransactionType.RESID ? 'رسید نقد' : selectedReceipt.type === TransactionType.BOARD ? 'برد نقد' : 'تبادله نقد'}
+                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${selectedReceipt.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-700' : selectedReceipt.type === TransactionType.BOARD ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {selectedReceipt.type === TransactionType.RESID ? 'RESID CASH' : selectedReceipt.type === TransactionType.BOARD ? 'BOARD CASH' : 'EXCHANGE CASH'}
                          </span>
-                         <p className="text-xs font-black text-slate-900 tabular-nums">{new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}</p>
+                         <p className="text-[11px] font-black text-slate-900 tnum">{new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}</p>
                       </div>
 
                       <div className="space-y-5 text-right">
                          <div className="flex justify-between border-b border-slate-50 pb-4">
-                            <span className="text-sm font-bold text-slate-400">نام مشتری:</span>
-                            <span className="text-sm font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد'}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">مشتری:</span>
+                            <span className="text-xs font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد'}</span>
                          </div>
                          <div className="flex justify-between border-b border-slate-50 pb-4">
-                            <span className="text-sm font-bold text-slate-400">مبلغ:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">مبلغ:</span>
                             <div className="text-left">
-                               <p className="text-2xl font-black text-slate-900 tabular-nums">{selectedReceipt.amount.toLocaleString()} <span className="text-xs uppercase">{selectedReceipt.currency}</span></p>
+                               <p className="text-base font-black text-slate-900 tnum">{selectedReceipt.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-50">{selectedReceipt.currency}</span></p>
                             </div>
                          </div>
                          {selectedReceipt.type === TransactionType.EXCHANGE && (
                            <>
                              <div className="flex justify-between border-b border-slate-50 pb-4">
-                                <span className="text-sm font-bold text-slate-400">تبدیل به:</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">تبدیل به:</span>
                                 <div className="text-left">
-                                   <p className="text-lg font-black text-emerald-600 tabular-nums">{selectedReceipt.convertedAmount?.toLocaleString()} <span className="text-[10px] uppercase text-slate-400">{selectedReceipt.targetCurrency}</span></p>
+                                   <p className="text-sm font-black text-emerald-600 tnum">{selectedReceipt.convertedAmount?.toLocaleString()} <span className="text-[9px] uppercase text-slate-400">{selectedReceipt.targetCurrency}</span></p>
                                 </div>
                              </div>
                              <div className="flex justify-between border-b border-slate-50 pb-4">
-                                <span className="text-sm font-bold text-emerald-600">مفاد از تبادله:</span>
-                                <span className="text-sm font-black text-emerald-700">{selectedReceipt.netProfit?.toLocaleString()} AFN</span>
+                                <span className="text-[10px] font-bold text-emerald-600 uppercase">مفاد تبادله:</span>
+                                <span className="text-xs font-black text-emerald-700 tnum">{selectedReceipt.netProfit?.toLocaleString()} AFN</span>
                              </div>
                            </>
                          )}
                          <div className="pt-2 text-right">
-                            <p className="text-xs font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed">
+                            <p className="text-[10px] font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed">
                                {selectedReceipt.description || 'بدون شرح تراکنش'}
                             </p>
                          </div>
@@ -205,11 +205,11 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                    <div className="pt-10 border-t border-slate-100">
                       <div className="flex justify-between items-end mb-10">
                          <div className="text-center">
-                            <p className="text-[9px] font-black text-slate-400 uppercase mb-6">امضاء صندوقدار</p>
-                            <p className="text-[10px] font-black text-slate-900">{currentUser?.fullName}</p>
+                            <p className="text-[8px] font-black text-slate-400 uppercase mb-6 tracking-widest">CASHIER SIGN</p>
+                            <p className="text-[9px] font-black text-slate-900">{currentUser?.fullName}</p>
                          </div>
                          <div className="text-center">
-                            <p className="text-[9px] font-black text-slate-400 uppercase mb-6">امضاء مشتری</p>
+                            <p className="text-[8px] font-black text-slate-400 uppercase mb-6 tracking-widest">CLIENT SIGN</p>
                             <div className="w-20 h-0.5 bg-slate-100 mx-auto"></div>
                          </div>
                       </div>
@@ -217,9 +217,9 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
 
                    <button 
                      onClick={handlePrint}
-                     className="w-full bg-blue-600 text-white py-5 rounded-[1.5rem] font-black text-lg shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center gap-3 print:hidden"
+                     className="w-full bg-slate-950 text-white py-4 rounded-xl font-black text-sm shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 print:hidden"
                    >
-                      <PrintIcon size={20} /> چاپ فیزیکی رسید نقد
+                      <PrintIcon size={18} /> PRINT RECEIPT
                    </button>
                 </div>
               )}
