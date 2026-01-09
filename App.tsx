@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
   Settings as SettingsIcon, Briefcase, PieChart, Landmark, Sparkles, Zap,
-  ArrowRightLeft, CreditCard, Printer, UserPlus, ShieldCheck
+  ArrowRightLeft, CreditCard, Printer, UserPlus, ShieldCheck, Percent, Code2
 } from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate, BankAccount } from './types';
 import Dashboard from './components/Dashboard';
@@ -18,12 +18,13 @@ import ExchangeBalances from './components/ExchangeBalances';
 import BankTransactions from './components/BankTransactions';
 import ReportManager from './components/ReportManager';
 import WalkinManager from './components/WalkinManager';
+import CommissionManager from './components/CommissionManager';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin' | 'commission'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
@@ -83,8 +84,10 @@ const App: React.FC = () => {
       cashBox[curr.code] = (resid + exchangeIn) - (board + exchangeOut);
     });
 
-    const totalProfit = approved.reduce((sum, t) => sum + (t.netProfit || 0), 0);
-    return { cashBox, totalProfit };
+    const totalCashProfit = approved.filter(t => !t.isBank).reduce((sum, t) => sum + (t.netProfit || 0), 0);
+    const totalBankProfit = approved.filter(t => t.isBank).reduce((sum, t) => sum + (t.netProfit || 0), 0);
+    
+    return { cashBox, totalCashProfit, totalBankProfit };
   }, [transactions]);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -105,22 +108,19 @@ const App: React.FC = () => {
             </div>
           </div>
           <h1 className="text-xl font-bold text-white text-center mb-1">پنل کاربری سیستم مدیریت</h1>
-          <p className="text-slate-500 text-center text-[10px] mb-8 uppercase tracking-widest font-bold">Official Access Terminal</p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input type="text" required placeholder="شناسه کاربری" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
             <input type="password" required placeholder="رمز عبور" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-3.5 px-5 text-white outline-none focus:border-blue-500 transition-all text-right text-sm" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-            
-            {/* نمایش رسمی برند شرکت سازنده زیر فیلد رمز عبور */}
-            <div className="py-4 flex flex-col items-center border-t border-slate-800/50 mt-2">
-               <span className="text-[8px] font-black text-slate-500 uppercase tracking-[0.2em] mb-2">Developed By</span>
-               <h2 className="text-[10px] font-black text-blue-500 text-center leading-tight uppercase tracking-wider">Meraj Salehi Production and Programming Company</h2>
-            </div>
-
             <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-xl hover:bg-blue-700 transition-all">تائید و ورود به سامانه</button>
             {loginError && <p className="text-rose-500 text-center text-xs font-bold mt-4">{loginError}</p>}
           </form>
-          <div className="mt-8 text-center">
-             <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">Powered by Advanced Ledger v3.5</p>
+          
+          <div className="mt-8 pt-6 border-t border-slate-800 text-center animate-in fade-in slide-in-from-bottom-2 duration-700">
+             <div className="flex items-center justify-center gap-2 text-blue-500 mb-1 opacity-90">
+                <Code2 size={14} />
+                <span className="text-[9px] font-black uppercase tracking-[0.2em]">POWERED BY</span>
+             </div>
+             <p className="text-[10px] font-black text-blue-400 uppercase tracking-tight leading-relaxed">Meraj Salehi Production and Programming Company</p>
           </div>
         </div>
       </div>
@@ -135,7 +135,6 @@ const App: React.FC = () => {
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-sm mb-2"><Briefcase size={20} /></div>
             <div className="text-center">
               <h1 className="text-[11px] font-black text-slate-100 uppercase tracking-wide">{shopName}</h1>
-              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Official Management Suite</span>
             </div>
           </div>
           <nav className="space-y-1 flex-1 overflow-y-auto custom-scrollbar pr-0">
@@ -144,6 +143,7 @@ const App: React.FC = () => {
             <NavItem active={activeTab === 'walkin'} onClick={() => setActiveTab('walkin')} icon={<Zap size={16} />} label="مشتری راه‌روی" />
             <NavItem active={activeTab === 'exchange'} onClick={() => setActiveTab('exchange')} icon={<ArrowRightLeft size={16} />} label="تبادلات ارزی" />
             <NavItem active={activeTab === 'bankTransactions'} onClick={() => setActiveTab('bankTransactions')} icon={<CreditCard size={16} />} label="عملیات بانکی" />
+            <NavItem active={activeTab === 'commission'} onClick={() => setActiveTab('commission')} icon={<Percent size={16} />} label="جمع‌آوری کمیشن" />
             <NavItem active={activeTab === 'journal'} onClick={() => setActiveTab('journal')} icon={<BookOpen size={16} />} label="روزنامچه کل" />
             <NavItem active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} icon={<Printer size={16} />} label="گزارش‌گیری و چاپ" />
             <NavItem active={activeTab === 'approvals'} onClick={() => setActiveTab('approvals')} icon={<CheckCircle size={16} />} label="تائیدات نهایی" badge={transactions.filter(t => t.status === TransactionStatus.PENDING).length}/>
@@ -154,13 +154,12 @@ const App: React.FC = () => {
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={16} />} label="تنظیمات سیستم" />
           </nav>
           
-          {/* نمایش برند شرکت در انتهای سایدبار */}
-          <div className="mt-auto pt-6 border-t border-slate-800 text-center pb-2">
-            <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.1em] mb-1">Powered By</p>
-            <p className="text-[9px] font-bold text-blue-400 leading-tight">Meraj Salehi Production and Programming Company</p>
+          <div className="mt-4 pt-4 border-t border-slate-800/50 mb-4 px-2">
+             <p className="text-[7px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">DEVELOPED BY</p>
+             <p className="text-[8px] font-black text-blue-400 uppercase leading-tight">Meraj Salehi Production and Programming Company</p>
           </div>
 
-          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-3 rounded-xl hover:bg-slate-900 transition-all">
+          <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-3 text-slate-500 hover:text-rose-400 p-3 rounded-xl hover:bg-slate-900 transition-all mt-auto">
             <LogOut size={16} /> <span className="text-[11px] font-bold">خروج از پنل</span>
           </button>
         </div>
@@ -170,9 +169,8 @@ const App: React.FC = () => {
         <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center print:hidden">
           <div className="flex items-center gap-4">
             <div className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-               <p className="text-[10px] font-bold text-slate-500 uppercase">System Status: <span className="text-emerald-600">Active / Operational</span></p>
+               <p className="text-[10px] font-bold text-slate-500 uppercase">وضعیت سیستم: <span className="text-emerald-600">فعال</span></p>
             </div>
-            <div className="h-4 w-px bg-slate-200"></div>
             <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{shopName}</h2>
           </div>
           <div className="flex items-center gap-4">
@@ -189,7 +187,8 @@ const App: React.FC = () => {
           {activeTab === 'walkin' && <WalkinManager transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} shopName={shopName} currentUser={currentUser} />}
           {activeTab === 'exchange' && <ExchangeBalances transactions={transactions} setTransactions={setTransactions} globalRates={globalRates} customers={customers} />}
           {activeTab === 'bankTransactions' && <BankTransactions customers={customers} transactions={transactions} setTransactions={setTransactions} />}
-          {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} />}
+          {activeTab === 'commission' && <CommissionManager transactions={transactions} customers={customers} />}
+          {activeTab === 'journal' && <Journal transactions={transactions} customers={customers} globalRates={globalRates} />}
           {activeTab === 'approvals' && <Approvals transactions={transactions} setTransactions={setTransactions} customers={customers} setCustomers={setCustomers} />}
           {activeTab === 'cashbox' && <CashBoxManager transactions={transactions} stats={stats} currentUser={currentUser} customers={customers} shopName={shopName} />}
           {activeTab === 'bankAccounts' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}

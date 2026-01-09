@@ -71,7 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
         </div>
       </div>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
             <h3 className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Market: USD / AFN</h3>
             <div className="flex items-baseline gap-1 tnum">
@@ -85,7 +85,8 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
         <StatCard title="صندوق افغانی" value={(stats.cashBox['AFN'] || 0).toLocaleString()} unit="AFN" icon={<Coins size={14} className="text-slate-400" />} />
         <StatCard title="مفاد نقدی کل" value={stats.totalCashProfit.toLocaleString()} unit="AFN" icon={<TrendingUp size={14} className="text-emerald-500" />} />
         <StatCard title="تومان نقدی" value={(stats.cashBox['IRT_CASH'] || 0).toLocaleString()} unit="IRT" icon={<Coins size={14} className="text-slate-400" />} />
-        <StatCard title="سرمایه خالص کل" value={stats.totalCashProfit.toLocaleString()} unit="AFN" icon={<Sparkles size={14} className="text-white" />} highlight />
+        <StatCard title="مفاد کمیشن بانکی" value={stats.totalBankProfit.toLocaleString()} unit="IRT" icon={<CreditCard size={14} className="text-amber-500" />} />
+        <StatCard title="سرمایه خالص کل" value={(stats.totalCashProfit + stats.totalBankProfit * 0.01).toLocaleString()} unit="AFN" icon={<Sparkles size={14} className="text-white" />} highlight />
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -93,12 +94,9 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-50">
             <div className="flex items-center gap-2">
               <Landmark size={18} className="text-slate-400" />
-              <h3 className="text-[12px] font-bold text-slate-800 uppercase">نقدینگی حسابات بانکی</h3>
+              <h3 className="text-[12px] font-bold text-slate-800 uppercase">Bank Account Liquidity</h3>
             </div>
-            <div className="text-left">
-               <span className="text-[8px] font-black text-slate-400 uppercase block tracking-tighter">مفاد حواله بانکی</span>
-               <span className="text-sm font-black text-emerald-600 tnum">{(stats.totalBankProfit || 0).toLocaleString()} <span className="text-[9px]">تومان</span></span>
-            </div>
+            <span className="text-[9px] font-bold text-slate-400 uppercase">Live Balance Tracker</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {bankAccountBalances.map(account => (

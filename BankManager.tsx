@@ -3,9 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { 
   Landmark, Plus, ArrowDownLeft, ArrowUpRight, 
   Search, X, CreditCard, ArrowLeft, 
-  ChevronRight, List, CheckCircle, Clock, UserPlus, HelpCircle, ArrowRightLeft, Save, Percent
+  ChevronRight, List, CheckCircle, Clock, UserPlus, HelpCircle, ArrowRightLeft, Save, Percent, TrendingUp
 } from 'lucide-react';
-import { BankAccount, Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from '../types';
+import { BankAccount, Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from './types';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
@@ -47,6 +47,14 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     const board = approved.filter(t => t.type === TransactionType.BOARD).reduce((sum, t) => sum + t.amount, 0);
     return activeBank.balance + resid - board;
   }, [activeBank, transactions]);
+
+  // مجموع سود کل بانک‌ها یا بانک فعال
+  const bankCommissionProfit = useMemo(() => {
+    const filterBankId = activeBank?.id;
+    return transactions
+      .filter(t => t.isBank && t.status === TransactionStatus.APPROVED && (filterBankId ? t.bankAccountId === filterBankId : true))
+      .reduce((sum, t) => sum + (t.netProfit || 0), 0);
+  }, [transactions, activeBank]);
 
   const filteredCustomers = useMemo(() => {
     const term = searchCustomer.trim();
@@ -189,20 +197,23 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     alert(`مبلغ با موفقیت به حساب ${customer.name} منتقل شد.`);
   };
 
-  const modalCommissionAmount = (transferData.amount * transferData.commissionPercent) / 100;
-  const modalNetAmount = transferData.amount - modalCommissionAmount;
-
   if (!activeBank) {
     return (
       <div className="space-y-10 animate-in fade-in duration-500">
         <div className="flex justify-between items-center bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+           <div className="absolute top-4 left-4 text-left">
+              <span className="text-[8px] font-black text-slate-400 uppercase block tracking-tighter">مجموع مفاد کمیشن بانکی</span>
+              <span className="text-lg font-black text-emerald-600 tnum">{bankCommissionProfit.toLocaleString()} <span className="text-[10px]">تومان</span></span>
+           </div>
            <div>
               <h2 className="text-3xl font-black text-slate-900">مدیریت حسابات بانکی</h2>
               <p className="text-sm text-slate-400 mt-2 font-medium italic">یک حساب را برای شروع عملیات رسید یا برد انتخاب کنید.</p>
            </div>
-           <button onClick={() => setShowAddBankModal(true)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:bg-blue-700 transition-all">
-              <Plus size={20} /> افزودن حساب بانکی
-           </button>
+           <div className="flex items-center gap-4">
+              <button onClick={() => setShowAddBankModal(true)} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-3 shadow-xl hover:bg-blue-700 transition-all">
+                  <Plus size={20} /> افزودن حساب بانکی
+              </button>
+           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -234,7 +245,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
           <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
              <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-md shadow-2xl animate-in zoom-in">
                 <h3 className="text-2xl font-black mb-8 text-slate-900">تعریف حساب بانکی جدید</h3>
-                <div className="space-y-6 text-right">
+                <div className="space-y-6 text-right font-['Vazirmatn']">
                    <div className="space-y-2">
                       <label className="text-[10px] font-black text-slate-400 uppercase">نام بانک</label>
                       <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none" placeholder="مثلاً ملت" value={newBank.name} onChange={e => setNewBank({...newBank, name: e.target.value})} />
@@ -275,9 +286,13 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
             <ArrowLeft size={24} />
          </button>
          <div className="flex-1 bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 relative">
+            <div className="absolute top-4 left-6 text-left hidden md:block">
+                <span className="text-[8px] font-black text-slate-400 uppercase block tracking-tighter">مفاد کمیشن این بانک</span>
+                <span className="text-xl font-black text-emerald-600 tnum">{bankCommissionProfit.toLocaleString()} <span className="text-[10px]">تومان</span></span>
+            </div>
             <div className="flex items-center gap-6">
                <div className="p-4 bg-blue-600 text-white rounded-2xl shadow-lg"><Landmark size={28} /></div>
-               <div>
+               <div className="text-right">
                   <h2 className="text-2xl font-black text-slate-900">{activeBank.bankName}</h2>
                   <p className="text-xs font-mono text-slate-400 font-bold tracking-widest">{activeBank.accountNumber}</p>
                </div>
@@ -286,10 +301,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                <button onClick={openTransferModal} className="bg-slate-50 text-slate-900 px-6 py-4 rounded-2xl font-black text-xs flex items-center gap-2 border border-slate-100 hover:bg-slate-100 transition-all">
                   <ArrowRightLeft size={16} /> انتقال بین بانکی
                </button>
-               <div className="bg-amber-50 px-6 py-4 rounded-2xl border border-amber-100 text-center">
-                  <p className="text-[9px] font-black text-amber-600 uppercase mb-1">واریزی‌های مجهول:</p>
-                  <p className="text-xl font-black text-amber-700">{pendingDeposits.length} سند</p>
-               </div>
                <div className="bg-slate-950 px-8 py-4 rounded-2xl text-white text-center">
                   <p className="text-[9px] font-black text-slate-500 uppercase mb-1">موجودی کل بانک:</p>
                   <div className="flex items-baseline justify-center gap-2">
@@ -301,7 +312,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
          </div>
       </div>
 
-      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-md">
+      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-md mr-auto ml-0">
          <button onClick={() => setActiveTab('ops')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${activeTab === 'ops' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400'}`}>ثبت تراکنش قطعی</button>
          <button onClick={() => setActiveTab('pending')} className={`flex-1 py-3 rounded-xl font-black text-xs transition-all ${activeTab === 'pending' ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400'}`}>واریزی‌های مجهول (در انتظار)</button>
       </div>
@@ -336,7 +347,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                     </div>
 
                     <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">۲. مبلغ ({activeBank.currency})</label>
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">۲. مبلغ ({activeBank?.currency})</label>
                         <input type="number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl text-base font-bold outline-none" placeholder="قلم خرد برای مبالغ بالا" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} />
                     </div>
                 </div>
@@ -426,26 +437,26 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
             </div>
          )}
 
-         <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col h-full max-h-[700px]">
+         <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col h-full max-h-[700px] text-right font-['Vazirmatn']">
             <div className="flex justify-between items-center mb-6">
                <h3 className="text-xl font-black text-slate-900">تاریخچه تراکنش‌های بانک</h3>
                <div className="p-2 bg-slate-50 rounded-xl"><List size={18} className="text-slate-400" /></div>
             </div>
             <div className="overflow-y-auto flex-1 pr-2 custom-scrollbar">
                <table className="w-full text-right text-xs">
-                  <thead className="sticky top-0 bg-white z-10">
-                     <tr className="text-slate-400 border-b border-slate-50">
-                        <th className="pb-4 font-black uppercase">طرف حساب</th>
-                        <th className="pb-4 font-black uppercase text-left">مبلغ</th>
-                        <th className="pb-4 font-black uppercase text-center">وضعیت</th>
+                  <thead className="sticky top-0 bg-white z-10 text-right">
+                     <tr className="text-slate-400 border-b border-slate-50 uppercase">
+                        <th className="pb-4 font-black text-right">طرف حساب</th>
+                        <th className="pb-4 font-black text-left">مبلغ</th>
+                        <th className="pb-4 font-black text-center">وضعیت</th>
                      </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
-                     {transactions.filter(t => t.bankAccountId === activeBank.id).sort((a,b) => b.timestamp - a.timestamp).map(t => {
+                     {transactions.filter(t => t.bankAccountId === activeBank?.id).sort((a,b) => b.timestamp - a.timestamp).map(t => {
                         const customer = customers.find(c => c.id === t.customerId);
                         return (
                            <tr key={t.id} className="hover:bg-slate-50/50 group transition-all">
-                              <td className="py-5">
+                              <td className="py-5 text-right">
                                  <p className="font-black text-slate-800">{customer?.name || (t.customerId ? '---' : '⚠️ واریزی مجهول')}</p>
                                  <p className="text-[8px] font-mono text-slate-400 mt-1">{t.trackingId || 'بدون سریال'}</p>
                               </td>
@@ -558,7 +569,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
 
       {showAssignModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-4 text-right">
-          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in text-right">
             <div className="flex justify-between items-center mb-8 text-right">
                 <div>
                     <h3 className="text-3xl font-black">تخصیص به مشتری</h3>
@@ -567,17 +578,17 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                 <button onClick={() => setShowAssignModal(null)} className="p-3 bg-slate-100 rounded-full hover:bg-rose-50 hover:text-rose-500 transition-all"><X size={24} /></button>
             </div>
             
-            <div className="relative mb-6 text-right">
+            <div className="relative mb-6 text-right font-['Vazirmatn']">
                 <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
                 <input type="text" placeholder="جستجوی مشتری..." className="w-full bg-slate-50 p-6 pr-14 rounded-3xl font-bold border border-slate-100 focus:bg-white focus:ring-4 focus:ring-blue-100 outline-none transition-all text-right" value={searchCustomer} onChange={e => setSearchCustomer(e.target.value)} />
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar text-right">
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar text-right font-['Vazirmatn']">
               {filteredCustomers.map(c => (
-                <button key={c.id} onClick={() => handleAssignToCustomer(c)} className="w-full p-6 bg-slate-50 rounded-3xl flex justify-between items-center hover:bg-blue-600 hover:text-white group transition-all">
+                <button key={c.id} onClick={() => handleAssignToCustomer(c)} className="w-full p-6 bg-slate-50 rounded-3xl flex justify-between items-center hover:bg-blue-600 hover:text-white group transition-all text-right">
                   <div className="text-right">
                     <p className="font-black text-lg group-hover:text-white">{c.name}</p>
-                    <p className="text-[10px] opacity-60 font-bold uppercase mt-1">کد مشتری: {c.code}</p>
+                    <p className="text-[10px] opacity-60 font-bold uppercase mt-1 text-right">کد مشتری: {c.code}</p>
                   </div>
                   <ChevronRight size={24} className="opacity-0 group-hover:opacity-100 transition-all" />
                 </button>

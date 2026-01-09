@@ -32,9 +32,10 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
     ).sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, searchTerm, customers]);
 
+  // اصلاح: محاسبه مفاد نقدی شامل معاملات تبادله و همچنین تصفیه سود راه‌روی
   const cashProfit = useMemo(() => {
     return cashMovements
-      .filter(t => t.type === TransactionType.EXCHANGE)
+      .filter(t => t.type === TransactionType.EXCHANGE || (t.isWalkin && t.netProfit !== undefined))
       .reduce((sum, t) => sum + (t.netProfit || 0), 0);
   }, [cashMovements]);
 
@@ -43,7 +44,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-500 pb-20 print:p-0 print:bg-white">
+    <div className="space-y-10 animate-in fade-in duration-500 pb-20 print:p-0 print:bg-white text-right font-['Vazirmatn']">
       
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 print:hidden">
         <div className="lg:col-span-1 bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
@@ -105,7 +106,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
              <div className="space-y-3">
                 {cashMovements.map(t => {
                    const customer = customers.find(c => c.id === t.customerId);
-                   const displayName = customer?.name || t.guestName || 'تراکنش نقدی';
+                   const displayName = customer?.name || t.guestName || 'تراکنش نقدی آزاد';
                    return (
                      <button 
                        key={t.id} 
@@ -118,19 +119,26 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                            </div>
                            <div className="text-right">
                               <p className="font-black text-sm">{displayName}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                 <p className="text-[9px] opacity-60 font-bold tnum">
-                                    {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
+                              <div className="flex flex-col gap-1 mt-0.5">
+                                 <div className="flex items-center gap-2">
+                                    <p className="text-[9px] opacity-60 font-bold tnum">
+                                       {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
+                                    </p>
+                                    {(t.type === TransactionType.EXCHANGE || t.isWalkin) && (
+                                       <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>
+                                          {t.isWalkin ? 'تصفیه راه‌روی' : 'تبادله نقد'}
+                                       </span>
+                                    )}
+                                 </div>
+                                 <p className={`text-[10px] font-medium leading-tight text-right ${selectedReceipt?.id === t.id ? 'text-white/80' : 'text-slate-500'}`}>
+                                    {t.description}
                                  </p>
-                                 {t.type === TransactionType.EXCHANGE && (
-                                   <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>تبادله نقد</span>
-                                 )}
                               </div>
                            </div>
                         </div>
-                        <div className="text-left flex flex-col items-end">
+                        <div className="text-left flex flex-col items-end shrink-0 ml-4">
                            <p className="text-sm font-black tnum">{t.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-60">{t.currency}</span></p>
-                           {t.type === TransactionType.EXCHANGE && t.netProfit && (
+                           {t.netProfit !== undefined && (
                              <p className={`text-[9px] font-bold ${selectedReceipt?.id === t.id ? 'text-white' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN</p>
                            )}
                         </div>
@@ -164,7 +172,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                    <div className="space-y-8">
                       <div className="flex justify-between items-center bg-slate-50 p-6 rounded-[2rem]">
                          <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ${selectedReceipt.type === TransactionType.RESID ? 'bg-emerald-100 text-emerald-700' : selectedReceipt.type === TransactionType.BOARD ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {selectedReceipt.type === TransactionType.RESID ? 'RESID CASH' : selectedReceipt.type === TransactionType.BOARD ? 'BOARD CASH' : 'EXCHANGE CASH'}
+                            {selectedReceipt.isWalkin ? 'WALKIN SETTLEMENT' : selectedReceipt.type === TransactionType.RESID ? 'RESID CASH' : selectedReceipt.type === TransactionType.BOARD ? 'BOARD CASH' : 'EXCHANGE CASH'}
                          </span>
                          <p className="text-[11px] font-black text-slate-900 tnum">{new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}</p>
                       </div>
@@ -172,27 +180,46 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                       <div className="space-y-5 text-right">
                          <div className="flex justify-between border-b border-slate-50 pb-4">
                             <span className="text-[10px] font-bold text-slate-400 uppercase">مشتری:</span>
-                            <span className="text-xs font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد'}</span>
+                            <span className="text-xs font-black text-slate-900">{customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد / راه‌روی'}</span>
                          </div>
                          <div className="flex justify-between border-b border-slate-50 pb-4">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">مبلغ:</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">مبلغ اصلی:</span>
                             <div className="text-left">
                                <p className="text-base font-black text-slate-900 tnum">{selectedReceipt.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-50">{selectedReceipt.currency}</span></p>
                             </div>
                          </div>
-                         {selectedReceipt.type === TransactionType.EXCHANGE && (
-                           <>
-                             <div className="flex justify-between border-b border-slate-50 pb-4">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase">تبدیل به:</span>
-                                <div className="text-left">
-                                   <p className="text-sm font-black text-emerald-600 tnum">{selectedReceipt.convertedAmount?.toLocaleString()} <span className="text-[9px] uppercase text-slate-400">{selectedReceipt.targetCurrency}</span></p>
-                                </div>
-                             </div>
-                             <div className="flex justify-between border-b border-slate-50 pb-4">
-                                <span className="text-[10px] font-bold text-emerald-600 uppercase">مفاد تبادله:</span>
-                                <span className="text-xs font-black text-emerald-700 tnum">{selectedReceipt.netProfit?.toLocaleString()} AFN</span>
-                             </div>
-                           </>
+                         
+                         {/* نمایش جزئیات بانکی در صورت وجود */}
+                         {selectedReceipt.bankFrom && (
+                            <div className="flex justify-between border-b border-slate-50 pb-4">
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">بانک فرستنده:</span>
+                               <span className="text-xs font-black text-slate-900">{selectedReceipt.bankFrom}</span>
+                            </div>
+                         )}
+                         {selectedReceipt.bankTo && (
+                            <div className="flex justify-between border-b border-slate-50 pb-4">
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">بانک مقصد:</span>
+                               <span className="text-xs font-black text-slate-900">{selectedReceipt.bankTo}</span>
+                            </div>
+                         )}
+                         {selectedReceipt.cardLastFour && (
+                            <div className="flex justify-between border-b border-slate-50 pb-4">
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">۴ رقم آخر کارت:</span>
+                               <span className="text-xs font-black text-slate-900 tabular-nums">**** {selectedReceipt.cardLastFour}</span>
+                            </div>
+                         )}
+                         {selectedReceipt.trackingId && (
+                            <div className="flex justify-between border-b border-slate-50 pb-4">
+                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">شماره پیگیری:</span>
+                               <span className="text-xs font-black text-slate-900 tabular-nums">{selectedReceipt.trackingId}</span>
+                            </div>
+                         )}
+
+                         {selectedReceipt.netProfit !== undefined && (
+                           <div className="flex justify-between border-b border-slate-50 pb-4">
+                              <span className="text-[10px] font-bold text-emerald-600 uppercase">مفاد معامله:</span>
+                              <span className="text-xs font-black text-emerald-700 tnum">{selectedReceipt.netProfit.toLocaleString()} AFN</span>
+                           </div>
                          )}
                          <div className="pt-2 text-right">
                             <p className="text-[10px] font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed">

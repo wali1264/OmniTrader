@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Zap, Plus, Calculator, TrendingUp, ArrowDownLeft, 
   ArrowUpRight, CircleDollarSign, Save, Trash2, 
-  CheckCircle2, RefreshCw, Info, AlertCircle
+  CheckCircle2, RefreshCw, Info, AlertCircle, X, ArrowRight
 } from 'lucide-react';
 import { 
   Transaction, TransactionType, TransactionStatus, 
@@ -20,6 +20,7 @@ interface WalkinTrade {
   amount: number;
   rate: number;
   total: number;
+  profit: number;
   timestamp: number;
 }
 
@@ -41,7 +42,7 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
 
   const [formData, setFormData] = useState({
     amount: 0,
-    rate: 0,
+    profit: 0,
     currency: 'USD',
     description: ''
   });
@@ -50,15 +51,18 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
     localStorage.setItem('s_pending_walkin', JSON.stringify(pendingTrades));
   }, [pendingTrades]);
 
+  // اصلاح محاسبه مجموع سود: فقط مقادیر فیلد profit (که به افغانی است) جمع می‌شوند.
+  // مبالغ ارزها نباید با هم جمع یا از هم کسر شوند چون واحدهای متفاوتی دارند.
   const totals = useMemo(() => {
-    const buyTotal = pendingTrades.filter(t => t.type === 'buy').reduce((sum, t) => sum + t.total, 0);
-    const sellTotal = pendingTrades.filter(t => t.type === 'sell').reduce((sum, t) => sum + t.total, 0);
-    return { buyTotal, sellTotal, profit: sellTotal - buyTotal };
+    const buyCount = pendingTrades.filter(t => t.type === 'buy').length;
+    const sellCount = pendingTrades.filter(t => t.type === 'sell').length;
+    const totalAfnProfit = pendingTrades.reduce((sum, t) => sum + t.profit, 0);
+    return { buyCount, sellCount, profit: totalAfnProfit };
   }, [pendingTrades]);
 
   const handleAddTrade = (type: 'buy' | 'sell') => {
-    if (formData.amount <= 0 || formData.rate <= 0) {
-      alert("لطفاً مبلغ و نرخ معتبر وارد کنید.");
+    if (formData.amount <= 0 && formData.profit <= 0) {
+      alert("لطفاً مبلغ یا مفاد معتبری وارد کنید.");
       return;
     }
 
@@ -67,13 +71,14 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
       type,
       currency: formData.currency,
       amount: formData.amount,
-      rate: formData.rate,
-      total: formData.amount * formData.rate,
+      rate: 1,
+      total: formData.amount,
+      profit: formData.profit,
       timestamp: getSystemNow()
     };
 
     setPendingTrades(prev => [...prev, newTrade]);
-    setFormData({ ...formData, amount: 0, rate: 0 });
+    setFormData({ ...formData, amount: 0, profit: 0, currency: formData.currency, description: '' });
   };
 
   const removeTrade = (id: string) => {
@@ -86,32 +91,70 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
       return;
     }
 
-    const profitValue = totals.profit;
-    const isProfit = profitValue >= 0;
-    
     try {
-      const profitTransaction: Transaction = {
-        id: `WPROF-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        type: isProfit ? TransactionType.RESID : TransactionType.BOARD,
-        amount: Math.abs(profitValue),
-        currency: 'AFN',
-        netProfit: profitValue,
-        description: `[تصفیه راه‌روی] حاصل از ${pendingTrades.length} معامله عملیاتی - ${isProfit ? 'مفاد نهایی' : 'ضرر نهایی'}`,
-        timestamp: getSystemNow(),
-        status: TransactionStatus.APPROVED,
-        isBank: false,
-        isWalkin: true,
-        walkinStatus: WalkinStatus.SETTLED
-      };
+      const currencyChanges: Record<string, number> = {};
+      let totalAfnProfit = 0;
 
-      setTransactions(prev => [...prev, profitTransaction]);
+      // محاسبه تغییرات موجودی هر واحد ارزی و مجموع سود خالص به افغانی
+      pendingTrades.forEach(trade => {
+        const curr = trade.currency;
+        if (!currencyChanges[curr]) currencyChanges[curr] = 0;
+        
+        if (trade.type === 'buy') {
+          // خرید از مشتری = اضافه شدن به موجودی صرافی (رسید)
+          currencyChanges[curr] += trade.amount;
+        } else {
+          // فروش به مشتری = کسر شدن از موجودی صرافی (بورد)
+          currencyChanges[curr] -= trade.amount;
+        }
+        
+        totalAfnProfit += trade.profit;
+      });
+
+      const newTransactions: Transaction[] = [];
+      const now = getSystemNow();
+
+      // ۱. ثبت تراکنش‌های جابجایی ارز (خریدها اضافه و فروش‌ها کم می‌شوند)
+      Object.entries(currencyChanges).forEach(([curr, net], idx) => {
+        if (net === 0) return;
+        newTransactions.push({
+          id: `W-INV-${now}-${idx}`,
+          type: net > 0 ? TransactionType.RESID : TransactionType.BOARD,
+          amount: Math.abs(net),
+          currency: curr,
+          description: `[تصفیه راه‌روی] جابجایی واحد ${curr} - حاصل از معاملات بازار`,
+          timestamp: now + idx,
+          status: TransactionStatus.APPROVED,
+          isBank: false,
+          isWalkin: true
+        });
+      });
+
+      // ۲. ثبت تراکنش مربوط به سود کل حاصله به واحد افغانی
+      if (totalAfnProfit !== 0) {
+        newTransactions.push({
+          id: `W-PROF-${now}-P`,
+          type: totalAfnProfit > 0 ? TransactionType.RESID : TransactionType.BOARD,
+          amount: Math.abs(totalAfnProfit),
+          currency: 'AFN',
+          netProfit: totalAfnProfit,
+          description: `[تصفیه راه‌روی] مجموع سود حاصل از معاملات انجام شده`,
+          timestamp: now + 100,
+          status: TransactionStatus.APPROVED,
+          isBank: false,
+          isWalkin: true,
+          walkinStatus: WalkinStatus.SETTLED
+        });
+      }
+
+      setTransactions(prev => [...prev, ...newTransactions]);
       setPendingTrades([]);
       localStorage.removeItem('s_pending_walkin');
-      alert(`مفاد به مبلغ ${profitValue.toLocaleString()} AFN با موفقیت به صندوق منتقل شد.`);
+      alert(`عملیات تصفیه با موفقیت انجام شد. ارزها در صندوق بروزرسانی شدند.`);
       setActiveTab('buy');
     } catch (error) {
-      console.error("Error committing walk-in profit:", error);
-      alert("خطایی در ثبت تراکنش رخ داد.");
+      console.error("Error committing walk-in trades:", error);
+      alert("خطایی در ثبت تراکنش‌ها رخ داد.");
     }
   };
 
@@ -126,7 +169,7 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
           </div>
           <div className="flex gap-4">
             <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-xl text-center min-w-[150px]">
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">UNSETTLED P&L</p>
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider mb-1">UNSETTLED PROFIT (AFN)</p>
               <p className={`text-xl font-black tabular-nums ${totals.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {totals.profit.toLocaleString()} <span className="text-[10px]">AFN</span>
               </p>
@@ -157,16 +200,18 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-7 space-y-6">
           {(activeTab === 'buy' || activeTab === 'sell') && (
             <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-8 animate-in zoom-in duration-200">
-              <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
-                <div className={`p-3 rounded-xl text-white ${activeTab === 'buy' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-                  {activeTab === 'buy' ? <ArrowDownLeft size={20}/> : <ArrowUpRight size={20}/>}
-                </div>
-                <div className="text-right">
-                   <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">{activeTab === 'buy' ? 'ثبت خرید از مشتری' : 'ثبت فروش به مشتری'}</h3>
-                   <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Operational entry without balance impact</p>
+              <div className="flex items-center justify-between border-b border-slate-50 pb-6">
+                <div className="flex items-center gap-4">
+                   <div className={`p-3 rounded-xl text-white ${activeTab === 'buy' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+                    {activeTab === 'buy' ? <ArrowDownLeft size={20}/> : <ArrowUpRight size={20}/>}
+                  </div>
+                  <div className="text-right">
+                     <h3 className="text-lg font-black text-slate-800 uppercase tracking-tighter">{activeTab === 'buy' ? 'ثبت خرید از مشتری' : 'ثبت فروش به مشتری'}</h3>
+                     <p className="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Operational entry without balance impact</p>
+                  </div>
                 </div>
               </div>
 
@@ -189,7 +234,7 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2 text-right">
-                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Amount</label>
+                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ واحد ({formData.currency})</label>
                        <input 
                          type="number" 
                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xl font-black outline-none focus:bg-white transition-all text-right tabular-nums" 
@@ -199,23 +244,18 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
                        />
                     </div>
                     <div className="space-y-2 text-right">
-                       <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">Market Rate</label>
+                       <label className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mr-1">مفاد از تبادله (AFN)</label>
                        <input 
                          type="number" 
-                         step="0.0001"
-                         className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-xl font-black outline-none focus:bg-white transition-all text-center text-blue-600 tabular-nums" 
-                         placeholder="0.0000"
-                         value={formData.rate || ''}
-                         onChange={e => setFormData({...formData, rate: Number(e.target.value)})}
+                         className="w-full p-4 bg-emerald-50/30 border border-emerald-100 rounded-xl text-xl font-black outline-none focus:bg-white transition-all text-right tabular-nums text-emerald-700" 
+                         placeholder="0"
+                         value={formData.profit || ''}
+                         onChange={e => setFormData({...formData, profit: Number(e.target.value)})}
                        />
                     </div>
                  </div>
 
-                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div className="text-right">
-                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">TOTAL BASE (AFN):</p>
-                       <p className="text-xl font-black text-slate-900 tabular-nums">{(formData.amount * formData.rate).toLocaleString()} <span className="text-[10px] text-slate-400">AFN</span></p>
-                    </div>
+                 <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex justify-end items-center gap-4">
                     <button 
                       type="button"
                       onClick={() => handleAddTrade(activeTab === 'buy' ? 'buy' : 'sell')}
@@ -242,17 +282,17 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Purchases:</p>
-                    <p className="text-xl font-black text-slate-700 tabular-nums">{totals.buyTotal.toLocaleString()} <span className="text-[10px]">AFN</span></p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Items in Queue:</p>
+                    <p className="text-xl font-black text-slate-700 tabular-nums">{pendingTrades.length} <span className="text-[10px]">Records</span></p>
                  </div>
                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total Sales:</p>
-                    <p className="text-xl font-black text-slate-700 tabular-nums">{totals.sellTotal.toLocaleString()} <span className="text-[10px]">AFN</span></p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Total User-Entered Profit:</p>
+                    <p className="text-xl font-black text-slate-700 tabular-nums">{totals.profit.toLocaleString()} <span className="text-[10px]">AFN</span></p>
                  </div>
               </div>
 
               <div className={`p-10 rounded-2xl border flex flex-col items-center justify-center gap-4 ${totals.profit >= 0 ? 'bg-emerald-50/50 border-emerald-100' : 'bg-rose-50/50 border-rose-100'}`}>
-                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">NET SETTLEMENT VALUE</p>
+                 <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">NET PROFIT TO RECORD</p>
                  <div className={`text-4xl font-black tabular-nums ${totals.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {totals.profit >= 0 ? '+' : ''}{totals.profit.toLocaleString()} 
                     <span className="text-sm mr-2">AFN</span>
@@ -269,7 +309,7 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
 
               <div className="flex items-center gap-2 text-blue-600 bg-blue-50 p-4 rounded-xl text-[10px] font-bold">
                  <Info size={14} />
-                 Note: Committing will reset the current queue and record the net difference in the main cash box.
+                 Note: Committing will update the vault for EACH currency individually and record the net profit in AFN.
               </div>
             </div>
           )}
@@ -293,13 +333,13 @@ const WalkinManager: React.FC<WalkinManagerProps> = ({ transactions, setTransact
                          </div>
                          <div className="text-right">
                             <p className="font-black text-slate-800 text-xs tabular-nums">{trade.amount.toLocaleString()} {trade.currency}</p>
-                            <p className="text-[8px] font-bold text-slate-400 mt-0.5 tracking-tighter">RATE: {trade.rate} | {new Date(trade.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[8px] font-bold text-slate-400 tracking-tighter">{new Date(trade.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</p>
+                              {trade.profit > 0 && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1 rounded">+{trade.profit.toLocaleString()} AFN</span>}
+                            </div>
                          </div>
                       </div>
                       <div className="flex items-center gap-4">
-                         <div className="text-left">
-                            <p className="text-xs font-black text-slate-900 tabular-nums">{trade.total.toLocaleString()} <span className="text-[8px] opacity-40">AFN</span></p>
-                         </div>
                          <button 
                            onClick={() => removeTrade(trade.id)}
                            className="p-2 text-slate-300 hover:text-rose-500 transition-all opacity-0 group-hover:opacity-100"
