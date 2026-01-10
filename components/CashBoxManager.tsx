@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Briefcase, ArrowDownLeft, ArrowUpRight, 
-  Search, CheckCircle, Wallet, Printer as PrintIcon, TrendingUp
+  Search, CheckCircle, Wallet, Printer as PrintIcon, TrendingUp, Share2
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User as SystemUser, Customer } from '../types';
 
@@ -41,6 +41,34 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleShare = async () => {
+    if (!selectedReceipt) return;
+    const customerName = customers.find(c => c.id === selectedReceipt.customerId)?.name || selectedReceipt.guestName || 'مشتری آزاد';
+    const text = `
+رسید تراکنش - ${shopName}
+شماره سند: ${selectedReceipt.id.toUpperCase()}
+مشتری: ${customerName}
+نوع: ${selectedReceipt.type}
+مبلغ: ${selectedReceipt.amount.toLocaleString()} ${selectedReceipt.currency}
+تاریخ: ${new Date(selectedReceipt.timestamp).toLocaleDateString('fa-IR')}
+توضیحات: ${selectedReceipt.description || '---'}
+    `.trim();
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `رسید ${shopName}`,
+          text: text,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('متن رسید در حافظه کپی شد (اشتراک‌گذاری در این مرورگر پشتیبانی نمی‌شود).');
+    }
   };
 
   return (
@@ -242,12 +270,21 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                       </div>
                    </div>
 
-                   <button 
-                     onClick={handlePrint}
-                     className="w-full bg-slate-950 text-white py-4 rounded-xl font-black text-sm shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 print:hidden"
-                   >
-                      <PrintIcon size={18} /> PRINT RECEIPT
-                   </button>
+                   <div className="flex gap-3 print:hidden">
+                      <button 
+                        onClick={handlePrint}
+                        className="flex-1 bg-slate-950 text-white py-4 rounded-xl font-black text-sm shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3"
+                      >
+                         <PrintIcon size={18} /> چاپ رسید
+                      </button>
+                      <button 
+                        onClick={handleShare}
+                        className="bg-blue-600 text-white p-4 rounded-xl font-black text-sm shadow-xl hover:bg-blue-700 transition-all flex items-center justify-center"
+                        title="اشتراک گذاری"
+                      >
+                         <Share2 size={18} />
+                      </button>
+                   </div>
                 </div>
               )}
            </div>

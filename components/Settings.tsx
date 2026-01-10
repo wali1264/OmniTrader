@@ -4,9 +4,9 @@ import {
   Download, Upload, ShieldCheck, Database, 
   AlertTriangle, CheckCircle2, Users, 
   Lock, Key, UserPlus, Trash2, Save, Building, Eye, EyeOff, User as UserIcon,
-  Receipt, Plus, Wallet
+  Receipt, Plus, Wallet, Trash, ShieldAlert
 } from 'lucide-react';
-import { Customer, Transaction, User, UserRole, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus } from '../types';
+import { Customer, Transaction, User, UserRole, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount } from '../types';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
@@ -18,6 +18,8 @@ interface SettingsProps {
   setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   transactions: Transaction[];
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
+  bankAccounts: BankAccount[];
+  setBankAccounts: React.Dispatch<React.SetStateAction<BankAccount[]>>;
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
   shopName: string;
@@ -26,10 +28,12 @@ interface SettingsProps {
 
 const Settings: React.FC<SettingsProps> = ({ 
   users, setUsers, customers, setCustomers, 
-  transactions, setTransactions, currentUser, setCurrentUser,
-  shopName, setShopName
+  transactions, setTransactions, bankAccounts, setBankAccounts,
+  currentUser, setCurrentUser, shopName, setShopName
 }) => {
   const isAdmin = currentUser?.role === 'admin';
+  const isSuperUser = currentUser?.username === 'Meraj'; // قابلیت مخصوص معراج صالحی
+  
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup' | 'expenses'>(isAdmin ? 'general' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
@@ -91,7 +95,7 @@ const Settings: React.FC<SettingsProps> = ({
   };
 
   const handleExport = () => {
-    const backupData = { version: "3.0", timestamp: getSystemNow(), data: { users, customers, transactions, shopName } };
+    const backupData = { version: "3.0", timestamp: getSystemNow(), data: { users, customers, transactions, shopName, bankAccounts } };
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -112,6 +116,7 @@ const Settings: React.FC<SettingsProps> = ({
           setCustomers(json.data.customers);
           setTransactions(json.data.transactions);
           setShopName(json.data.shopName);
+          if (json.data.bankAccounts) setBankAccounts(json.data.bankAccounts);
           setStatus({ type: 'success', message: 'داده‌ها با موفقیت بازیابی شدند.' });
         }
       } catch (err) {
@@ -119,6 +124,25 @@ const Settings: React.FC<SettingsProps> = ({
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleResetAllData = () => {
+    if (!isSuperUser) return;
+    
+    const masterPass = prompt("عملیات خطرناک: برای تأیید پاکسازی کامل، رمز عبور مدیریتی خود را وارد کنید:");
+    if (masterPass !== currentUser?.password) {
+      alert("رمز عبور اشتباه است. دسترسی رد شد.");
+      return;
+    }
+
+    const confirm1 = confirm("⚠️ هشدار نهایی: تمام اطلاعات شامل تراکنش‌ها، مشتریان و حساب‌ها حذف خواهند شد. آیا ادامه می‌دهید؟");
+    if (!confirm1) return;
+
+    setTransactions([]);
+    setCustomers([]);
+    setBankAccounts([]);
+    
+    setStatus({ type: 'success', message: 'تمام اطلاعات سیستم با موفقیت صفر شد.' });
   };
 
   const handleAddExpense = (e: React.FormEvent) => {
@@ -151,7 +175,7 @@ const Settings: React.FC<SettingsProps> = ({
   }, [transactions]);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 font-['Vazirmatn']">
       {status.type !== 'none' && (
         <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-xl shadow-lg animate-in slide-in-from-top ${status.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
           {status.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -159,7 +183,7 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-3xl mx-auto overflow-x-auto scrollbar-hide">
+      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-3xl mx-auto overflow-x-auto scrollbar-hide text-right" dir="rtl">
         {isAdmin && (
           <button onClick={() => setActiveSubTab('general')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>تنظیمات عمومی</button>
         )}
@@ -171,11 +195,11 @@ const Settings: React.FC<SettingsProps> = ({
           <button onClick={() => setActiveSubTab('users')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>کاربران</button>
         )}
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>پشتیبان‌گیری</button>
+          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>پشتیبان‌گیری و مدیریت</button>
         )}
       </div>
 
-      <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[400px]">
+      <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[400px]" dir="rtl">
         {activeSubTab === 'general' && isAdmin && (
           <div className="max-w-md mx-auto space-y-6 text-right animate-in zoom-in duration-300">
             <div className="flex items-center gap-3 mb-6">
@@ -317,13 +341,13 @@ const Settings: React.FC<SettingsProps> = ({
         )}
 
         {activeSubTab === 'users' && isAdmin && (
-          <div className="space-y-10 animate-in fade-in duration-300">
-            <div className="flex items-center gap-3 mb-6 text-right">
+          <div className="space-y-10 animate-in fade-in duration-300 text-right">
+            <div className="flex items-center gap-3 mb-6">
               <Users className="text-blue-600" size={24} />
               <h3 className="text-xl font-black">مدیریت دسترسی کاربران</h3>
             </div>
-            <div className="grid grid-cols-1 md:divide-x md:divide-x-reverse divide-slate-100">
-              <div className="space-y-4 pr-0 md:pr-4">
+            <div className="grid grid-cols-1 divide-y divide-slate-100">
+              <div className="space-y-4">
                 {users.map(u => (
                   <div key={u.id} className="p-4 bg-slate-50 rounded-xl flex items-center justify-between group">
                     <div className="text-right">
@@ -345,16 +369,46 @@ const Settings: React.FC<SettingsProps> = ({
         )}
 
         {activeSubTab === 'backup' && isAdmin && (
-          <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 animate-in zoom-in duration-300">
-            <button onClick={handleExport} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-blue-50 transition-all">
-              <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl"><Download size={32} /></div>
-              <p className="font-black">پشتیبان‌گیری (Export)</p>
-            </button>
-            <button onClick={() => fileInputRef.current?.click()} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-amber-50 transition-all">
-              <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl"><Upload size={32} /></div>
-              <p className="font-black">بازیابی داده‌ها (Import)</p>
-              <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
-            </button>
+          <div className="space-y-10 animate-in zoom-in duration-300">
+            <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+              <button onClick={handleExport} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-blue-50 transition-all">
+                <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl"><Download size={32} /></div>
+                <p className="font-black">پشتیبان‌گیری (Export)</p>
+              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-amber-50 transition-all">
+                <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl"><Upload size={32} /></div>
+                <p className="font-black">بازیابی داده‌ها (Import)</p>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
+              </button>
+            </div>
+
+            {isSuperUser && (
+              <div className="max-w-2xl mx-auto p-10 bg-rose-50 rounded-[3rem] border border-rose-200 space-y-8 text-center shadow-xl relative overflow-hidden">
+                 <div className="absolute top-0 right-0 p-4 opacity-5"><ShieldAlert size={120} /></div>
+                 <div className="flex flex-col items-center gap-4 relative z-10">
+                   <div className="p-4 bg-rose-600 text-white rounded-[1.5rem] shadow-lg">
+                      <Trash size={32} />
+                   </div>
+                   <div className="text-center">
+                     <h4 className="text-2xl font-black text-rose-700">پنل کنترل ارشد (مخصوص معراج)</h4>
+                     <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mt-1">Danger Zone - System Reset Authority</p>
+                   </div>
+                 </div>
+                 
+                 <div className="bg-white/50 p-6 rounded-2xl border border-rose-100">
+                   <p className="text-xs font-bold text-rose-900 leading-relaxed text-right">
+                     ⚠️ <strong>هشدار امنیتی:</strong> با فشردن دکمه زیر، تمام اطلاعات مالی شامل تراکنش‌ها، دفتر مشتریان و حساب‌های بانکی به‌طور کامل و غیرقابل بازگشت پاکسازی می‌شوند. این عملیات فقط توسط حساب کاربری «معراج صالحی» و با وارد کردن رمز عبور قابل انجام است.
+                   </p>
+                 </div>
+
+                 <button 
+                  onClick={handleResetAllData}
+                  className="w-full bg-rose-600 text-white py-6 rounded-2xl font-black text-lg shadow-xl shadow-rose-900/10 hover:bg-rose-700 transition-all flex items-center justify-center gap-3 active:scale-95"
+                 >
+                    <Trash2 size={24} /> پاکسازی کامل و صفر کردن اطلاعات سیستم
+                 </button>
+              </div>
+            )}
           </div>
         )}
       </div>

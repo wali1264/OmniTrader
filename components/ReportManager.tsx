@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Printer, FileText, Users, BookOpen, Calendar, ChevronLeft, ChevronRight, ArrowLeftRight } from 'lucide-react';
+import { Printer, FileText, Users, BookOpen, Calendar, ChevronLeft, ChevronRight, ArrowLeftRight, Share2 } from 'lucide-react';
 import { Transaction, Customer, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES } from '../types';
 
 const SYSTEM_TIME_OFFSET = 3600000;
@@ -65,6 +65,29 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
     window.print();
   };
 
+  const handleShare = async () => {
+    const text = `
+گزارش ${reportType === 'customers' ? 'تراز مشتریان' : 'روزنامچه'} - ${shopName}
+تاریخ: ${reportType === 'customers' ? `${startDate} تا ${endDate}` : selectedDate.toLocaleDateString('fa-IR')}
+تعداد تراکنش‌ها: ${reportType === 'customers' ? customerBalances.length : filteredJournal.length} مورد
+جهت مشاهده کامل گزارش به پنل مدیریتی مراجعه کنید.
+    `.trim();
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `گزارش ${shopName}`,
+          text: text,
+        });
+      } catch (err) {
+        console.error('Error sharing:', err);
+      }
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('متن خلاصه گزارش در حافظه کپی شد.');
+    }
+  };
+
   const changeDay = (offset: number) => {
     const newDate = new Date(selectedDate);
     newDate.setDate(selectedDate.getDate() + offset);
@@ -88,9 +111,14 @@ const ReportManager: React.FC<ReportManagerProps> = ({ transactions, customers, 
                 <BookOpen size={16} /> روزنامچه
               </button>
             </div>
-            <button onClick={handlePrint} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-xl hover:bg-black transition-all">
-              <Printer size={18} /> چاپ گزارش
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={handlePrint} className="bg-slate-900 text-white px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-xl hover:bg-black transition-all">
+                <Printer size={18} /> چاپ گزارش
+              </button>
+              <button onClick={handleShare} className="bg-blue-600 text-white p-3 rounded-2xl font-black text-sm flex items-center justify-center shadow-xl hover:bg-blue-700 transition-all">
+                <Share2 size={18} />
+              </button>
+            </div>
           </div>
         </div>
 
