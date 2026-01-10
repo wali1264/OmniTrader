@@ -1,15 +1,16 @@
 
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
-  Download, Upload, ShieldCheck, Database, 
+  Download, Upload, ShieldCheck, 
   AlertTriangle, CheckCircle2, Users, 
-  Lock, Key, UserPlus, Trash2, Save, Building, Eye, EyeOff, User as UserIcon,
-  Receipt, Plus, Wallet, Trash, ShieldAlert
+  Lock, Save, Building, Eye, EyeOff, User as UserIcon,
+  Receipt, Plus, Trash2, ShieldX, X, AlertOctagon, KeyRound
 } from 'lucide-react';
-import { Customer, Transaction, User, UserRole, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount } from '../types';
+import { Customer, Transaction, User, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount } from '../types';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+const DEVELOPER_SECRET_KEY = 'ADMIN@2026'; // رمز مخصوص سازنده
 
 interface SettingsProps {
   users: User[];
@@ -24,32 +25,33 @@ interface SettingsProps {
   setCurrentUser: (user: User | null) => void;
   shopName: string;
   setShopName: (name: string) => void;
+  appStatus: 'ACTIVE' | 'LOCKED';
+  setAppStatus: (status: 'ACTIVE' | 'LOCKED') => void;
+  isMasterSession: boolean;
 }
 
 const Settings: React.FC<SettingsProps> = ({ 
   users, setUsers, customers, setCustomers, 
   transactions, setTransactions, bankAccounts, setBankAccounts,
-  currentUser, setCurrentUser, shopName, setShopName
+  currentUser, setCurrentUser, shopName, setShopName,
+  appStatus, setAppStatus, isMasterSession
 }) => {
   const isAdmin = currentUser?.role === 'admin';
-  const isSuperUser = currentUser?.username === 'Meraj'; // قابلیت مخصوص معراج صالحی
   
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup' | 'expenses'>(isAdmin ? 'general' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
   
-  // Security States
+  // Security Wipe States
+  const [showDevAuth, setShowDevAuth] = useState(false);
+  const [devPasswordInput, setDevPasswordInput] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
+
+  // General Account States
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [tempUsername, setTempUsername] = useState(currentUser?.username || '');
-  
-  // General States
   const [tempShopName, setTempShopName] = useState(shopName);
-
-  // User Management States
-  const [newUser, setNewUser] = useState({ fullName: '', username: '', password: '', role: 'operator' as UserRole });
-
-  // Expenses States
   const [expenseData, setExpenseData] = useState({ amount: 0, currency: 'AFN', description: '' });
 
   useEffect(() => {
@@ -59,6 +61,21 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, [status]);
 
+  const handleVerifyDev = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (devPasswordInput === DEVELOPER_SECRET_KEY) {
+      setIsVerified(true);
+    } else {
+      setStatus({ type: 'error', message: 'رمز سازنده نادرست است!' });
+      setDevPasswordInput('');
+    }
+  };
+
+  const executeFinalWipe = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
   const handleUpdatePassword = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -66,7 +83,6 @@ const Settings: React.FC<SettingsProps> = ({
       setStatus({ type: 'error', message: 'رمز عبور باید حداقل ۴ کاراکتر باشد.' });
       return;
     }
-
     const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, password: newPassword } : u);
     setUsers(updatedUsers);
     setCurrentUser({ ...currentUser, password: newPassword });
@@ -77,16 +93,14 @@ const Settings: React.FC<SettingsProps> = ({
   const handleUpdateUsername = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !tempUsername) return;
-    
     if (users.find(u => u.username === tempUsername && u.id !== currentUser.id)) {
-      setStatus({ type: 'error', message: 'این نام کاربری قبلاً توسط شخص دیگری انتخاب شده است.' });
+      setStatus({ type: 'error', message: 'این نام کاربری قبلاً انتخاب شده است.' });
       return;
     }
-
     const updatedUsers = users.map(u => u.id === currentUser.id ? { ...u, username: tempUsername } : u);
     setUsers(updatedUsers);
     setCurrentUser({ ...currentUser, username: tempUsername });
-    setStatus({ type: 'success', message: 'نام کاربری با موفقیت بروزرسانی شد.' });
+    setStatus({ type: 'success', message: 'نام کاربری بروزرسانی شد.' });
   };
 
   const handleSaveShopName = () => {
@@ -117,7 +131,7 @@ const Settings: React.FC<SettingsProps> = ({
           setTransactions(json.data.transactions);
           setShopName(json.data.shopName);
           if (json.data.bankAccounts) setBankAccounts(json.data.bankAccounts);
-          setStatus({ type: 'success', message: 'داده‌ها با موفقیت بازیابی شدند.' });
+          setStatus({ type: 'success', message: 'داده‌ها بازیابی شدند.' });
         }
       } catch (err) {
         setStatus({ type: 'error', message: 'فایل نامعتبر است.' });
@@ -126,32 +140,9 @@ const Settings: React.FC<SettingsProps> = ({
     reader.readAsText(file);
   };
 
-  const handleResetAllData = () => {
-    if (!isSuperUser) return;
-    
-    const masterPass = prompt("عملیات خطرناک: برای تأیید پاکسازی کامل، رمز عبور مدیریتی خود را وارد کنید:");
-    if (masterPass !== currentUser?.password) {
-      alert("رمز عبور اشتباه است. دسترسی رد شد.");
-      return;
-    }
-
-    const confirm1 = confirm("⚠️ هشدار نهایی: تمام اطلاعات شامل تراکنش‌ها، مشتریان و حساب‌ها حذف خواهند شد. آیا ادامه می‌دهید؟");
-    if (!confirm1) return;
-
-    setTransactions([]);
-    setCustomers([]);
-    setBankAccounts([]);
-    
-    setStatus({ type: 'success', message: 'تمام اطلاعات سیستم با موفقیت صفر شد.' });
-  };
-
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    if (expenseData.amount <= 0 || !expenseData.description) {
-      setStatus({ type: 'error', message: 'لطفاً مبلغ و شرح مصرف را وارد کنید.' });
-      return;
-    }
-
+    if (expenseData.amount <= 0 || !expenseData.description) return;
     const newExpenseTransaction: Transaction = {
       id: 'EXP-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
       type: TransactionType.BOARD,
@@ -162,17 +153,10 @@ const Settings: React.FC<SettingsProps> = ({
       status: TransactionStatus.APPROVED,
       isBank: false
     };
-
     setTransactions(prev => [...prev, newExpenseTransaction]);
     setExpenseData({ amount: 0, currency: 'AFN', description: '' });
-    setStatus({ type: 'success', message: 'هزینه با موفقیت در حساب مصارف ثبت شد.' });
+    setStatus({ type: 'success', message: 'هزینه در دفتر مصارف ثبت شد.' });
   };
-
-  const expenseHistory = useMemo(() => {
-    return transactions
-      .filter(t => t.description.startsWith('[مصرف]'))
-      .sort((a, b) => b.timestamp - a.timestamp);
-  }, [transactions]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 font-['Vazirmatn']">
@@ -189,228 +173,282 @@ const Settings: React.FC<SettingsProps> = ({
         )}
         <button onClick={() => setActiveSubTab('security')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'security' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>امنیت</button>
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('expenses')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>مصارف شخصی و دفتر</button>
+          <button onClick={() => setActiveSubTab('expenses')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'expenses' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>مصارف دفتر</button>
         )}
         {isAdmin && (
           <button onClick={() => setActiveSubTab('users')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'users' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>کاربران</button>
         )}
         {isAdmin && (
-          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>پشتیبان‌گیری و مدیریت</button>
+          <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>مدیریت داده‌ها</button>
         )}
       </div>
 
-      <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[400px]" dir="rtl">
-        {activeSubTab === 'general' && isAdmin && (
-          <div className="max-w-md mx-auto space-y-6 text-right animate-in zoom-in duration-300">
-            <div className="flex items-center gap-3 mb-6">
-              <Building className="text-blue-600" size={24} />
-              <h3 className="text-xl font-black">اطلاعات صرافی</h3>
-            </div>
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 mr-1">نام صرافی</label>
-              <input type="text" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 text-right" value={tempShopName} onChange={e => setTempShopName(e.target.value)} />
-            </div>
-            <button onClick={handleSaveShopName} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
-              <Save size={18} /> ذخیره تغییرات
-            </button>
-          </div>
-        )}
-
-        {activeSubTab === 'expenses' && isAdmin && (
-          <div className="space-y-10 animate-in zoom-in duration-300">
-            <div className="flex items-center gap-3 mb-6 text-right">
-              <Receipt className="text-rose-600" size={24} />
-              <h3 className="text-xl font-black text-slate-900">ثبت مصارف شخصی و دفتر</h3>
-            </div>
-            
-            <form onSubmit={handleAddExpense} className="max-w-xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
-               <div className="space-y-1.5 md:col-span-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ هزینه</label>
-                  <div className="flex gap-2">
-                    <input type="number" className="flex-1 p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none text-right" placeholder="0" value={expenseData.amount || ''} onChange={e => setExpenseData({...expenseData, amount: Number(e.target.value)})} />
-                    <select className="w-24 p-3 bg-slate-100 rounded-xl font-black text-xs outline-none text-right" value={expenseData.currency} onChange={e => setExpenseData({...expenseData, currency: e.target.value})}>
-                      {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                    </select>
-                  </div>
-               </div>
-               <div className="space-y-1.5 md:col-span-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح مصرف (توضیحات)</label>
-                  <input type="text" className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none text-right" placeholder="مثلاً: اجاره، برق، کرایه..." value={expenseData.description} onChange={e => setExpenseData({...expenseData, description: e.target.value})} />
-               </div>
-               <div className="md:col-span-2 pt-2">
-                  <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black text-sm shadow-lg shadow-rose-100 flex items-center justify-center gap-2 hover:bg-rose-700 transition-all">
-                    <Plus size={18} /> ثبت در دفتر مصارف
-                  </button>
-               </div>
-            </form>
-
-            <hr className="border-slate-50" />
-
-            <div className="space-y-4">
-               <h4 className="text-sm font-black text-slate-800 text-right">تاریخچه مصارف اخیر</h4>
-               <div className="overflow-x-auto">
-                 <table className="w-full text-right text-xs">
-                   <thead className="bg-slate-50 text-slate-400">
-                     <tr>
-                       <th className="p-4 font-black">تاریخ</th>
-                       <th className="p-4 font-black">شرح مصرف</th>
-                       <th className="p-4 font-black">مبلغ</th>
-                       <th className="p-4 font-black text-center">عملیات</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-50">
-                     {expenseHistory.map(exp => (
-                       <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                         <td className="p-4 text-slate-400 font-medium tabular-nums">{new Date(exp.timestamp).toLocaleDateString('fa-IR')}</td>
-                         <td className="p-4 font-black text-slate-700">{exp.description.replace('[مصرف] ', '')}</td>
-                         <td className="p-4 font-black text-rose-600 tabular-nums">{exp.amount.toLocaleString()} <span className="text-[9px] opacity-50">{exp.currency}</span></td>
-                         <td className="p-4 text-center">
-                            <button onClick={() => {
-                              if(confirm('آیا این رکورد مصرف حذف شود؟')) {
-                                setTransactions(prev => prev.filter(t => t.id !== exp.id));
-                                setStatus({ type: 'success', message: 'رکورد هزینه حذف شد.' });
-                              }
-                            }} className="p-2 text-rose-300 hover:text-rose-600 transition-colors">
-                               <Trash2 size={16} />
-                            </button>
-                         </td>
-                       </tr>
-                     ))}
-                     {expenseHistory.length === 0 && (
-                       <tr><td colSpan={4} className="p-10 text-center text-slate-300 font-bold">هنوز هیچ مصرفی ثبت نشده است.</td></tr>
-                     )}
-                   </tbody>
-                 </table>
-               </div>
-            </div>
-          </div>
-        )}
-
-        {activeSubTab === 'security' && (
-          <div className="max-w-md mx-auto space-y-10 text-right animate-in zoom-in duration-300">
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 mb-6">
-                <UserIcon className="text-blue-600" size={24} />
-                <h3 className="text-xl font-black">تنظیم نام کاربری</h3>
-              </div>
-              <form onSubmit={handleUpdateUsername} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 mr-1">نام کاربری فعلی شما</label>
-                  <input 
-                    type="text" 
-                    className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-blue-500/20 text-right" 
-                    value={tempUsername} 
-                    onChange={e => setTempUsername(e.target.value)}
-                  />
+      <div className="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[400px] flex flex-col" dir="rtl">
+        <div className="flex-1">
+            {activeSubTab === 'general' && isAdmin && (
+            <div className="max-w-md mx-auto space-y-6 text-right animate-in zoom-in duration-300">
+                <div className="flex items-center gap-3 mb-6">
+                <Building className="text-blue-600" size={24} />
+                <h3 className="text-xl font-black">اطلاعات صرافی</h3>
                 </div>
-                <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-blue-100 transition-transform active:scale-95 text-right">
-                  <Save size={18} /> بروزرسانی نام کاربری
-                </button>
-              </form>
-            </div>
-
-            <hr className="border-slate-100" />
-
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Lock className="text-rose-600" size={24} />
-                <h3 className="text-xl font-black">تنظیم رمز عبور جدید</h3>
-              </div>
-              <form onSubmit={handleUpdatePassword} className="space-y-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 mr-1">رمز عبور جدید</label>
-                  <div className="relative">
-                    <input 
-                      type={showPass ? "text" : "password"} 
-                      className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-rose-500/20 text-right" 
-                      value={newPassword} 
-                      onChange={e => setNewPassword(e.target.value)}
-                      placeholder="رمز عبور جدید را وارد کنید..."
-                    />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                      {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                <label className="text-xs font-bold text-slate-500 mr-1">نام صرافی</label>
+                <input type="text" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-bold outline-none focus:ring-2 focus:ring-blue-500/20 text-right" value={tempShopName} onChange={e => setTempShopName(e.target.value)} />
+                </div>
+                <button onClick={handleSaveShopName} className="w-full bg-slate-900 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
+                <Save size={18} /> ذخیره تغییرات
+                </button>
+            </div>
+            )}
+
+            {activeSubTab === 'expenses' && isAdmin && (
+            <div className="space-y-10 animate-in zoom-in duration-300">
+                <div className="flex items-center gap-3 mb-6 text-right">
+                <Receipt className="text-rose-600" size={24} />
+                <h3 className="text-xl font-black text-slate-900">ثبت مصارف دفتر</h3>
+                </div>
+                <form onSubmit={handleAddExpense} className="max-w-xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-right">
+                <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">مبلغ هزینه</label>
+                    <div className="flex gap-2">
+                        <input type="number" className="flex-1 p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-black text-lg outline-none text-right" placeholder="0" value={expenseData.amount || ''} onChange={e => setExpenseData({...expenseData, amount: Number(e.target.value)})} />
+                        <select className="w-24 p-3 bg-slate-100 rounded-xl font-black text-xs outline-none text-right" value={expenseData.currency} onChange={e => setExpenseData({...expenseData, currency: e.target.value})}>
+                        {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                        </select>
+                    </div>
+                </div>
+                <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">شرح مصرف</label>
+                    <input type="text" className="w-full p-3.5 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none text-right" placeholder="مثلاً: کرایه" value={expenseData.description} onChange={e => setExpenseData({...expenseData, description: e.target.value})} />
+                </div>
+                <div className="md:col-span-2 pt-2">
+                    <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black text-sm shadow-lg shadow-rose-100 flex items-center justify-center gap-2 hover:bg-rose-700 transition-all">
+                        <Plus size={18} /> ثبت در دفتر مصارف
+                    </button>
+                </div>
+                </form>
+            </div>
+            )}
+
+            {activeSubTab === 'security' && (
+            <div className="max-w-md mx-auto space-y-10 text-right animate-in zoom-in duration-300">
+                <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                    <UserIcon className="text-blue-600" size={24} />
+                    <h3 className="text-xl font-black">تنظیم حساب کاربری</h3>
+                </div>
+                <form onSubmit={handleUpdateUsername} className="space-y-4">
+                    <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 mr-1">نام کاربری فعلی</label>
+                    <input type="text" className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-blue-500/20 text-right" value={tempUsername} onChange={e => setTempUsername(e.target.value)} />
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2">
+                    <Save size={18} /> بروزرسانی نام کاربری
+                    </button>
+                </form>
+                </div>
+
+                <hr className="border-slate-100" />
+
+                <div className="space-y-6">
+                <div className="flex items-center gap-3 mb-6">
+                    <Lock className="text-rose-600" size={24} />
+                    <h3 className="text-xl font-black">تنظیم رمز عبور جدید</h3>
+                </div>
+                <form onSubmit={handleUpdatePassword} className="space-y-6">
+                    <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 mr-1">رمز عبور جدید</label>
+                    <div className="relative">
+                        <input type={showPass ? "text" : "password"} className="w-full p-4 bg-slate-50 rounded-xl border border-slate-100 font-black outline-none focus:ring-2 focus:ring-rose-500/20 text-right" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="رمز عبور..." />
+                        <button type="button" onClick={() => setShowPass(!showPass)} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                        {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
+                    </div>
+                    <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg">
+                    <ShieldCheck size={18} /> تغییر رمز عبور
+                    </button>
+                </form>
+                </div>
+            </div>
+            )}
+
+            {activeSubTab === 'users' && isAdmin && (
+            <div className="space-y-10 animate-in fade-in duration-300 text-right">
+                <div className="flex items-center gap-3 mb-6">
+                <Users className="text-blue-600" size={24} />
+                <h3 className="text-xl font-black">مدیریت کاربران</h3>
+                </div>
+                <div className="grid grid-cols-1 divide-y divide-slate-100">
+                {users.map(u => (
+                    <div key={u.id} className="p-4 bg-slate-50 rounded-xl flex items-center justify-between group mb-2">
+                    <div className="text-right">
+                        <p className="font-black text-slate-900">{u.fullName}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">نام کاربری: {u.username}</p>
+                    </div>
+                    {u.id !== currentUser?.id && (
+                        <button onClick={() => setUsers(prev => prev.filter(user => user.id !== u.id))} className="p-2 text-rose-300 hover:text-rose-600"><Trash2 size={18} /></button>
+                    )}
+                    </div>
+                ))}
+                </div>
+            </div>
+            )}
+
+            {activeSubTab === 'backup' && isAdmin && (
+            <div className="space-y-10 animate-in zoom-in duration-300 text-right">
+                <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <button onClick={handleExport} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-blue-50 transition-all">
+                      <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl"><Download size={32} /></div>
+                      <p className="font-black">بکاپ اطلاعات (Export)</p>
+                  </button>
+                  <button onClick={() => fileInputRef.current?.click()} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-amber-50 transition-all">
+                      <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl"><Upload size={32} /></div>
+                      <p className="font-black">بازیابی اطلاعات (Import)</p>
+                      <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
+                  </button>
+                </div>
+
+                <div className="max-w-2xl mx-auto pt-10 border-t border-slate-50">
+                  <div className="bg-rose-50 border border-rose-100 p-8 rounded-[2.5rem] space-y-6 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-900/20">
+                        <ShieldX size={32} />
+                      </div>
+                      <h3 className="text-xl font-black text-rose-800">حذف کامل اطلاعات صرافی</h3>
+                      <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest leading-relaxed">این عملیات فقط با رمز مخصوص سازنده مجاز است.</p>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        setShowDevAuth(true);
+                        setIsVerified(false);
+                        setDevPasswordInput('');
+                      }}
+                      className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+                    >
+                      <Trash2 size={20} /> پاکسازی کامل و امحاء تمام اطلاعات سیستم
                     </button>
                   </div>
                 </div>
-                <button type="submit" className="w-full bg-rose-600 text-white py-4 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg shadow-rose-100 transition-transform active:scale-95">
-                  <ShieldCheck size={18} /> بروزرسانی رمز عبور
-                </button>
-              </form>
             </div>
-          </div>
-        )}
+            )}
+        </div>
+      </div>
+      
+      {/* صفحه/مدال تأیید هویت و امحاء سازنده */}
+      {showDevAuth && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-300 relative text-right">
+            <button 
+              onClick={() => setShowDevAuth(false)}
+              className="absolute top-6 left-6 p-2 text-slate-400 hover:text-slate-900 transition-all"
+            >
+              <X size={24} />
+            </button>
 
-        {activeSubTab === 'users' && isAdmin && (
-          <div className="space-y-10 animate-in fade-in duration-300 text-right">
-            <div className="flex items-center gap-3 mb-6">
-              <Users className="text-blue-600" size={24} />
-              <h3 className="text-xl font-black">مدیریت دسترسی کاربران</h3>
-            </div>
-            <div className="grid grid-cols-1 divide-y divide-slate-100">
-              <div className="space-y-4">
-                {users.map(u => (
-                  <div key={u.id} className="p-4 bg-slate-50 rounded-xl flex items-center justify-between group">
-                    <div className="text-right">
-                      <p className="font-black text-slate-900">{u.fullName}</p>
-                      <p className="text-[10px] text-slate-400 font-bold">نام کاربری: {u.username} | {u.role === 'admin' ? 'مدیر' : 'اپراتور'}</p>
-                    </div>
-                    {u.id !== currentUser?.id && (
-                      <button onClick={() => {
-                        if(confirm('حذف کاربر؟')) setUsers(prev => prev.filter(user => user.id !== u.id));
-                      }} className="p-2 text-rose-300 hover:text-rose-600 transition-all opacity-0 group-hover:opacity-100">
-                        <Trash2 size={18} />
-                      </button>
-                    )}
+            {!isVerified ? (
+              <div className="space-y-8 animate-in slide-in-from-bottom duration-300">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl">
+                    <KeyRound size={32} />
                   </div>
-                ))}
+                  <div className="text-center">
+                    <h3 className="text-2xl font-black text-slate-900">🔐 تأیید هویت سازنده</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Master Identity Authentication Required</p>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
+                  <p className="text-xs text-blue-800 font-bold leading-relaxed text-center">
+                    این عملیات فوق‌حساس فقط توسط سازنده اپلیکیشن قابل اجراست.
+                    لطفاً رمز مخصوص سازنده را جهت بازگشایی پنل امحاء وارد کنید.
+                  </p>
+                </div>
+
+                <form onSubmit={handleVerifyDev} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">رمز مخصوص سازنده</label>
+                    <input 
+                      type="password"
+                      autoFocus
+                      className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:ring-4 focus:ring-blue-100 transition-all tabular-nums"
+                      placeholder="••••••••"
+                      value={devPasswordInput}
+                      onChange={e => setDevPasswordInput(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button 
+                      type="submit"
+                      className="flex-1 bg-slate-900 text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:bg-black shadow-xl"
+                    >
+                      <ShieldCheck size={20} /> تأیید و ورود
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setShowDevAuth(false)}
+                      className="px-6 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs"
+                    >
+                      لغو
+                    </button>
+                  </div>
+                </form>
               </div>
-            </div>
-          </div>
-        )}
+            ) : (
+              <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="p-4 bg-rose-600 text-white rounded-2xl animate-pulse shadow-xl shadow-rose-900/20">
+                    <AlertOctagon size={40} />
+                  </div>
+                  <div className="text-center">
+                    <h3 className="text-2xl font-black text-rose-600">⚠️ هشدار نهایی امنیتی</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest text-center">Irreversible Data Destruction Process</p>
+                  </div>
+                </div>
 
-        {activeSubTab === 'backup' && isAdmin && (
-          <div className="space-y-10 animate-in zoom-in duration-300">
-            <div className="max-w-2xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-              <button onClick={handleExport} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-blue-50 transition-all">
-                <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl"><Download size={32} /></div>
-                <p className="font-black">پشتیبان‌گیری (Export)</p>
-              </button>
-              <button onClick={() => fileInputRef.current?.click()} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center gap-4 hover:bg-amber-50 transition-all">
-                <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl"><Upload size={32} /></div>
-                <p className="font-black">بازیابی داده‌ها (Import)</p>
-                <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
-              </button>
-            </div>
+                <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100 text-right space-y-4">
+                  <p className="text-xs text-rose-900 font-black leading-relaxed text-center">
+                    تمام اطلاعات صرافی (صندوق، مشتریان، تبادلات...) به صورت کامل و غیرقابل بازگشت حذف خواهد شد.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
+                       <CheckCircle2 size={12} /> انحلال تمام دفاتر حسابداری
+                     </span>
+                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
+                       <CheckCircle2 size={12} /> پاکسازی تاریخچه تراکنش‌ها
+                     </span>
+                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
+                       <CheckCircle2 size={12} /> ریست کامل تنظیمات سیستم
+                     </span>
+                  </div>
+                </div>
 
-            {isSuperUser && (
-              <div className="max-w-2xl mx-auto p-10 bg-rose-50 rounded-[3rem] border border-rose-200 space-y-8 text-center shadow-xl relative overflow-hidden">
-                 <div className="absolute top-0 right-0 p-4 opacity-5"><ShieldAlert size={120} /></div>
-                 <div className="flex flex-col items-center gap-4 relative z-10">
-                   <div className="p-4 bg-rose-600 text-white rounded-[1.5rem] shadow-lg">
-                      <Trash size={32} />
-                   </div>
-                   <div className="text-center">
-                     <h4 className="text-2xl font-black text-rose-700">پنل کنترل ارشد (مخصوص معراج)</h4>
-                     <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mt-1">Danger Zone - System Reset Authority</p>
-                   </div>
-                 </div>
-                 
-                 <div className="bg-white/50 p-6 rounded-2xl border border-rose-100">
-                   <p className="text-xs font-bold text-rose-900 leading-relaxed text-right">
-                     ⚠️ <strong>هشدار امنیتی:</strong> با فشردن دکمه زیر، تمام اطلاعات مالی شامل تراکنش‌ها، دفتر مشتریان و حساب‌های بانکی به‌طور کامل و غیرقابل بازگشت پاکسازی می‌شوند. این عملیات فقط توسط حساب کاربری «معراج صالحی» و با وارد کردن رمز عبور قابل انجام است.
-                   </p>
-                 </div>
-
-                 <button 
-                  onClick={handleResetAllData}
-                  className="w-full bg-rose-600 text-white py-6 rounded-2xl font-black text-lg shadow-xl shadow-rose-900/10 hover:bg-rose-700 transition-all flex items-center justify-center gap-3 active:scale-95"
-                 >
-                    <Trash2 size={24} /> پاکسازی کامل و صفر کردن اطلاعات سیستم
-                 </button>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={executeFinalWipe}
+                    className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-rose-900/20 hover:bg-rose-700 active:scale-95 transition-all"
+                  >
+                    حذف نهایی و امحاء کل داده‌ها
+                  </button>
+                  <button 
+                    onClick={() => {
+                        setIsVerified(false);
+                        setShowDevAuth(false);
+                    }}
+                    className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs"
+                  >
+                    انصراف و بازگشت به تنظیمات
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        )}
+        </div>
+      )}
+
+      {/* فوتر اطلاعات سازنده */}
+      <div className="pt-6 text-center opacity-30 select-none">
+        <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Meraj Salehi Production and Programming Company</p>
       </div>
     </div>
   );
