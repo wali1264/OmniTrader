@@ -22,7 +22,7 @@ import CommissionManager from './components/CommissionManager';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
-const MASTER_PASSWORD = 'ADMIN@2026';
+const MASTER_PASSWORD = '1234566';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin' | 'commission'>('dashboard');

@@ -4,13 +4,15 @@ import {
   Download, Upload, ShieldCheck, 
   AlertTriangle, CheckCircle2, Users, 
   Lock, Save, Building, Eye, EyeOff, User as UserIcon,
-  Receipt, Plus, Trash2, ShieldX, X, AlertOctagon, KeyRound
+  Receipt, Plus, Trash2, X, ShieldAlert, KeyRound, AlertOctagon, Terminal
 } from 'lucide-react';
 import { Customer, Transaction, User, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount } from '../types';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
-const DEVELOPER_SECRET_KEY = 'ADMIN@2026'; // رمز مخصوص سازنده
+
+// رمز مخصوص سازنده اپلیکیشن جهت دسترسی به پنل مدیریت دیتا
+const DEVELOPER_SECRET_KEY = '1234566';
 
 interface SettingsProps {
   users: User[];
@@ -38,16 +40,17 @@ const Settings: React.FC<SettingsProps> = ({
 }) => {
   const isAdmin = currentUser?.role === 'admin';
   
-  const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup' | 'expenses'>(isAdmin ? 'general' : 'security');
+  const [activeSubTab, setActiveSubTab] = useState<'general' | 'security' | 'users' | 'backup' | 'expenses' | 'dev'> (isAdmin ? 'general' : 'security');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', message: string }>({ type: 'none', message: '' });
   
-  // Security Wipe States
-  const [showDevAuth, setShowDevAuth] = useState(false);
-  const [devPasswordInput, setDevPasswordInput] = useState('');
-  const [isVerified, setIsVerified] = useState(false);
+  // Developer Auth States
+  const [showDevModal, setShowDevModal] = useState(false);
+  const [devInput, setDevInput] = useState('');
+  const [isDevUnlocked, setIsDevUnlocked] = useState(false);
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
 
-  // General Account States
+  // General Form States
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [tempUsername, setTempUsername] = useState(currentUser?.username || '');
@@ -61,18 +64,23 @@ const Settings: React.FC<SettingsProps> = ({
     }
   }, [status]);
 
-  const handleVerifyDev = (e: React.FormEvent) => {
+  const handleDevLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (devPasswordInput === DEVELOPER_SECRET_KEY) {
-      setIsVerified(true);
+    if (devInput === DEVELOPER_SECRET_KEY) {
+      setIsDevUnlocked(true);
+      setShowDevModal(false);
+      setDevInput('');
+      setStatus({ type: 'success', message: 'پنل مدیریت دیتا با موفقیت باز شد.' });
     } else {
-      setStatus({ type: 'error', message: 'رمز سازنده نادرست است!' });
-      setDevPasswordInput('');
+      setStatus({ type: 'error', message: 'رمز عبور سازنده اشتباه است!' });
+      setDevInput('');
     }
   };
 
-  const executeFinalWipe = () => {
+  const handleWipeData = () => {
+    // امحاء فیزیکی تمام داده‌های ذخیره شده در مرورگر
     localStorage.clear();
+    // ری‌استارت اپلیکیشن
     window.location.reload();
   };
 
@@ -167,7 +175,7 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
       )}
 
-      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-3xl mx-auto overflow-x-auto scrollbar-hide text-right" dir="rtl">
+      <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 max-w-4xl mx-auto overflow-x-auto scrollbar-hide text-right" dir="rtl">
         {isAdmin && (
           <button onClick={() => setActiveSubTab('general')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'general' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>تنظیمات عمومی</button>
         )}
@@ -180,6 +188,9 @@ const Settings: React.FC<SettingsProps> = ({
         )}
         {isAdmin && (
           <button onClick={() => setActiveSubTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>مدیریت داده‌ها</button>
+        )}
+        {isAdmin && (
+          <button onClick={() => setActiveSubTab('dev')} className={`flex-1 py-3 px-4 rounded-xl font-bold text-[10px] transition-all whitespace-nowrap ${activeSubTab === 'dev' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400 hover:text-slate-600'}`}>🔐 پنل سازنده</button>
         )}
       </div>
 
@@ -308,144 +319,136 @@ const Settings: React.FC<SettingsProps> = ({
                       <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleImport} />
                   </button>
                 </div>
+            </div>
+            )}
 
-                <div className="max-w-2xl mx-auto pt-10 border-t border-slate-50">
-                  <div className="bg-rose-50 border border-rose-100 p-8 rounded-[2.5rem] space-y-6 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="p-3 bg-rose-600 text-white rounded-2xl shadow-lg shadow-rose-900/20">
-                        <ShieldX size={32} />
-                      </div>
-                      <h3 className="text-xl font-black text-rose-800">حذف کامل اطلاعات صرافی</h3>
-                      <p className="text-[10px] font-bold text-rose-400 uppercase tracking-widest leading-relaxed">این عملیات فقط با رمز مخصوص سازنده مجاز است.</p>
+            {activeSubTab === 'dev' && isAdmin && (
+            <div className="space-y-8 animate-in zoom-in duration-300 text-center flex flex-col items-center py-10">
+                {!isDevUnlocked ? (
+                  <div className="max-w-md w-full space-y-6">
+                    <div className="p-6 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 inline-block mb-4">
+                      <Lock size={48} className="text-slate-300" />
                     </div>
+                    <h3 className="text-xl font-black text-slate-900">پنل امنیتی سازنده</h3>
+                    <p className="text-xs text-slate-400 font-bold leading-relaxed px-10">
+                      این بخش شامل ابزارهای حساس مدیریتی است. برای دسترسی، لطفاً رمز عبور ارشد سازنده را وارد نمایید.
+                    </p>
                     <button 
-                      onClick={() => {
-                        setShowDevAuth(true);
-                        setIsVerified(false);
-                        setDevPasswordInput('');
-                      }}
-                      className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+                      onClick={() => setShowDevModal(true)}
+                      className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 mx-auto shadow-xl hover:bg-black transition-all"
                     >
-                      <Trash2 size={20} /> پاکسازی کامل و امحاء تمام اطلاعات سیستم
+                      <KeyRound size={18} /> ورود به پنل سازنده
                     </button>
                   </div>
-                </div>
+                ) : (
+                  <div className="max-w-2xl w-full space-y-10 animate-in fade-in duration-500">
+                    <div className="flex items-center justify-between bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                       <div className="flex items-center gap-4">
+                          <div className="p-3 bg-emerald-600 text-white rounded-2xl shadow-lg"><Terminal size={20} /></div>
+                          <div className="text-right">
+                             <h4 className="text-sm font-black text-emerald-900 uppercase">Master Developer Panel</h4>
+                             <p className="text-[9px] font-bold text-emerald-600 opacity-60">Status: Authenticated Session</p>
+                          </div>
+                       </div>
+                       <button onClick={() => setIsDevUnlocked(false)} className="text-[9px] font-black text-emerald-700 bg-emerald-200 px-3 py-1.5 rounded-lg">خروج از پنل</button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-6">
+                       <div className="bg-rose-50 border border-rose-100 p-8 rounded-[3rem] space-y-6">
+                          <div className="flex flex-col items-center gap-4 text-center">
+                             <div className="p-4 bg-rose-600 text-white rounded-2xl shadow-xl shadow-rose-900/20">
+                                <ShieldAlert size={32} />
+                             </div>
+                             <h3 className="text-xl font-black text-rose-800 uppercase">حذف کامل اطلاعات سیستم</h3>
+                             <p className="text-[10px] font-bold text-rose-400 max-w-sm leading-relaxed">
+                                هشدار: این عملیات تمام مشتریان، تراکنش‌ها، موجودی‌ها و کاربران را برای همیشه حذف کرده و سیستم را به حالت کارخانه بازمی‌گرداند.
+                             </p>
+                          </div>
+                          <button 
+                            onClick={() => setShowWipeConfirm(true)}
+                            className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+                          >
+                             <Trash2 size={20} /> پاکسازی کامل و امحاء تمام اطلاعات
+                          </button>
+                       </div>
+                    </div>
+                  </div>
+                )}
             </div>
             )}
         </div>
       </div>
-      
-      {/* صفحه/مدال تأیید هویت و امحاء سازنده */}
-      {showDevAuth && (
+
+      {/* Developer Login Modal */}
+      {showDevModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-300 relative text-right">
-            <button 
-              onClick={() => setShowDevAuth(false)}
-              className="absolute top-6 left-6 p-2 text-slate-400 hover:text-slate-900 transition-all"
-            >
-              <X size={24} />
-            </button>
-
-            {!isVerified ? (
-              <div className="space-y-8 animate-in slide-in-from-bottom duration-300">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="p-4 bg-blue-100 text-blue-600 rounded-2xl">
-                    <KeyRound size={32} />
-                  </div>
-                  <div className="text-center">
-                    <h3 className="text-2xl font-black text-slate-900">🔐 تأیید هویت سازنده</h3>
-                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest">Master Identity Authentication Required</p>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
-                  <p className="text-xs text-blue-800 font-bold leading-relaxed text-center">
-                    این عملیات فوق‌حساس فقط توسط سازنده اپلیکیشن قابل اجراست.
-                    لطفاً رمز مخصوص سازنده را جهت بازگشایی پنل امحاء وارد کنید.
-                  </p>
-                </div>
-
-                <form onSubmit={handleVerifyDev} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">رمز مخصوص سازنده</label>
-                    <input 
-                      type="password"
-                      autoFocus
-                      className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:ring-4 focus:ring-blue-100 transition-all tabular-nums"
-                      placeholder="••••••••"
-                      value={devPasswordInput}
-                      onChange={e => setDevPasswordInput(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-3">
-                    <button 
-                      type="submit"
-                      className="flex-1 bg-slate-900 text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:bg-black shadow-xl"
-                    >
-                      <ShieldCheck size={20} /> تأیید و ورود
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setShowDevAuth(false)}
-                      className="px-6 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black text-xs"
-                    >
-                      لغو
-                    </button>
-                  </div>
-                </form>
+            <button onClick={() => setShowDevModal(false)} className="absolute top-6 left-6 text-slate-400 hover:text-slate-900"><X size={24} /></button>
+            <div className="flex flex-col items-center gap-4 mb-8">
+              <div className="p-4 bg-slate-900 text-white rounded-2xl shadow-xl">
+                <KeyRound size={32} />
               </div>
-            ) : (
-              <div className="space-y-8 animate-in fade-in duration-500">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="p-4 bg-rose-600 text-white rounded-2xl animate-pulse shadow-xl shadow-rose-900/20">
-                    <AlertOctagon size={40} />
-                  </div>
-                  <div className="text-center">
-                    <h3 className="text-2xl font-black text-rose-600">⚠️ هشدار نهایی امنیتی</h3>
-                    <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase tracking-widest text-center">Irreversible Data Destruction Process</p>
-                  </div>
-                </div>
-
-                <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100 text-right space-y-4">
-                  <p className="text-xs text-rose-900 font-black leading-relaxed text-center">
-                    تمام اطلاعات صرافی (صندوق، مشتریان، تبادلات...) به صورت کامل و غیرقابل بازگشت حذف خواهد شد.
-                  </p>
-                  <div className="flex flex-col gap-2">
-                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
-                       <CheckCircle2 size={12} /> انحلال تمام دفاتر حسابداری
-                     </span>
-                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
-                       <CheckCircle2 size={12} /> پاکسازی تاریخچه تراکنش‌ها
-                     </span>
-                     <span className="flex items-center gap-2 text-[10px] font-bold text-rose-700">
-                       <CheckCircle2 size={12} /> ریست کامل تنظیمات سیستم
-                     </span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <button 
-                    onClick={executeFinalWipe}
-                    className="w-full bg-rose-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-rose-900/20 hover:bg-rose-700 active:scale-95 transition-all"
-                  >
-                    حذف نهایی و امحاء کل داده‌ها
-                  </button>
-                  <button 
-                    onClick={() => {
-                        setIsVerified(false);
-                        setShowDevAuth(false);
-                    }}
-                    className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs"
-                  >
-                    انصراف و بازگشت به تنظیمات
-                  </button>
-                </div>
+              <h3 className="text-2xl font-black text-slate-900">ورود رمز سازنده</h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Authentication Required</p>
+            </div>
+            <form onSubmit={handleDevLogin} className="space-y-6">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1">رمز عبور ارشد</label>
+                <input 
+                  type="password" 
+                  autoFocus
+                  className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-center text-xl outline-none focus:ring-4 focus:ring-slate-100 transition-all tabular-nums" 
+                  placeholder="••••••••" 
+                  value={devInput}
+                  onChange={e => setDevInput(e.target.value)}
+                />
               </div>
-            )}
+              <button type="submit" className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-900/20 hover:bg-black transition-all">
+                تأیید و بازگشایی پنل
+              </button>
+            </form>
           </div>
         </div>
       )}
 
+      {/* Final Wipe Confirmation Modal */}
+      {showWipeConfirm && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-3xl z-[110] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-md shadow-2xl animate-in zoom-in duration-200 relative text-right border-t-8 border-rose-600">
+            <div className="flex flex-col items-center gap-6 mb-10 text-center">
+               <div className="p-6 bg-rose-100 text-rose-600 rounded-[2rem] animate-pulse">
+                  <AlertOctagon size={48} />
+               </div>
+               <div>
+                  <h3 className="text-3xl font-black text-rose-600">هشدار بسیار مهم!</h3>
+                  <p className="text-xs text-slate-400 font-bold mt-2 uppercase tracking-widest">Permanent Destruction Warning</p>
+               </div>
+            </div>
+            
+            <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100 text-center mb-10">
+               <p className="text-sm text-rose-900 font-black leading-relaxed">
+                  آیا کاملاً مطمئن هستید؟ با تأیید این مرحله، تمام دیتابیس صرافی شامل حساب‌ها، صندوق، تراکنش‌ها و کاربران به صورت فیزیکی و دائمی حذف شده و قابل بازیابی نخواهد بود.
+               </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+               <button 
+                 onClick={handleWipeData}
+                 className="w-full bg-rose-600 text-white py-6 rounded-2xl font-black text-xl shadow-2xl shadow-rose-900/20 hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+               >
+                  <Trash2 size={24} /> بله، حذف نهایی و امحاء کل اطلاعات
+               </button>
+               <button 
+                 onClick={() => setShowWipeConfirm(false)}
+                 className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black text-xs"
+               >
+                  انصراف و بازگشت
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* فوتر اطلاعات سازنده */}
       <div className="pt-6 text-center opacity-30 select-none">
         <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em]">Meraj Salehi Production and Programming Company</p>
