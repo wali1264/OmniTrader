@@ -68,6 +68,7 @@ export interface Customer {
   status: 'active' | 'inactive';
   notes: string;
   balances: Record<string, number>;
+  isLocked?: boolean;
 }
 
 export interface Transaction {

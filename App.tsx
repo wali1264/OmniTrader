@@ -1,9 +1,8 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
   Settings as SettingsIcon, Briefcase, PieChart, Landmark, Sparkles, Zap,
-  ArrowRightLeft, CreditCard, Printer, UserPlus, ShieldCheck, Percent, Code2, Lock, ShieldAlert
+  ArrowRightLeft, CreditCard, Printer, UserPlus, ShieldCheck, Percent, Code2, Lock, ShieldAlert, CalendarRange
 } from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User, GlobalRate, BankAccount } from './types';
 import Dashboard from './components/Dashboard';
@@ -19,13 +18,14 @@ import BankTransactions from './components/BankTransactions';
 import ReportManager from './components/ReportManager';
 import WalkinManager from './components/WalkinManager';
 import CommissionManager from './components/CommissionManager';
+import PeriodicBalances from './components/PeriodicBalances';
 
 const SYSTEM_TIME_OFFSET = 3600000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
 const MASTER_PASSWORD = '1234566';
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin' | 'commission'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'customers' | 'bankAccounts' | 'journal' | 'approvals' | 'assets' | 'cashbox' | 'settings' | 'exchange' | 'bankTransactions' | 'reports' | 'walkin' | 'commission' | 'periodicBalances'>('dashboard');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isMasterSession, setIsMasterSession] = useState(false); // وضعیت ورود با رمز عبور ارشد
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -136,7 +136,7 @@ const App: React.FC = () => {
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 font-['Vazirmatn']" dir="rtl">
-        <div className="w-full max-w-sm bg-[#0f172a] p-10 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden">
+        <div className="w-full max-sm bg-[#0f172a] p-10 rounded-2xl border border-slate-800 shadow-2xl relative overflow-hidden">
           <div className={`absolute top-0 right-0 w-full h-1 ${appStatus === 'LOCKED' ? 'bg-rose-600' : 'bg-blue-600'}`}></div>
           
           <div className="flex justify-center mb-8">
@@ -198,6 +198,7 @@ const App: React.FC = () => {
             <NavItem active={activeTab === 'cashbox'} onClick={() => setActiveTab('cashbox')} icon={<Wallet size={16} />} label="مدیریت صندوق" />
             <NavItem active={activeTab === 'bankAccounts'} onClick={() => setActiveTab('bankAccounts')} icon={<Landmark size={16} />} label="مدیریت بانک‌ها" />
             <NavItem active={activeTab === 'assets'} onClick={() => setActiveTab('assets')} icon={<PieChart size={16} />} label="تراز دارایی‌ها" />
+            <NavItem active={activeTab === 'periodicBalances'} onClick={() => setActiveTab('periodicBalances')} icon={<CalendarRange size={16} />} label="تراز دوره‌ای (هفته/ماه/ربع)" />
             <NavItem active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<SettingsIcon size={16} />} label="تنظیمات سیستم" />
           </nav>
           
@@ -240,6 +241,7 @@ const App: React.FC = () => {
           {activeTab === 'cashbox' && <CashBoxManager transactions={transactions} stats={stats} currentUser={currentUser} customers={customers} shopName={shopName} />}
           {activeTab === 'bankAccounts' && <BankManager bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} transactions={transactions} setTransactions={setTransactions} customers={customers} />}
           {activeTab === 'assets' && <AssetCalculator customers={customers} stats={stats} globalRates={globalRates} />}
+          {activeTab === 'periodicBalances' && <PeriodicBalances transactions={transactions} customers={customers} />}
           {activeTab === 'settings' && <Settings users={users} setUsers={setUsers} customers={customers} setCustomers={setCustomers} transactions={transactions} setTransactions={setTransactions} bankAccounts={bankAccounts} setBankAccounts={setBankAccounts} currentUser={currentUser} setCurrentUser={setCurrentUser} shopName={shopName} setShopName={setShopName} appStatus={appStatus} setAppStatus={setAppStatus} isMasterSession={isMasterSession} />}
           {activeTab === 'reports' && <ReportManager transactions={transactions} customers={customers} shopName={shopName} />}
         </div>

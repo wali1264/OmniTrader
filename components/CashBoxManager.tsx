@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   Briefcase, ArrowDownLeft, ArrowUpRight, 
@@ -158,8 +157,8 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                                        </span>
                                     )}
                                  </div>
-                                 <p className={`text-[10px] font-medium leading-tight text-right ${selectedReceipt?.id === t.id ? 'text-white/80' : 'text-slate-500'}`}>
-                                    {t.description}
+                                 <p className={`text-[10px] font-bold leading-tight text-right ${selectedReceipt?.id === t.id ? 'text-white/90' : 'text-slate-600'}`}>
+                                    <span className="opacity-50">شرح معامله: </span>{t.description || 'ثبت نقدینگی مشتری'}
                                  </p>
                               </div>
                            </div>
@@ -217,32 +216,6 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                             </div>
                          </div>
                          
-                         {/* نمایش جزئیات بانکی در صورت وجود */}
-                         {selectedReceipt.bankFrom && (
-                            <div className="flex justify-between border-b border-slate-50 pb-4">
-                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">بانک فرستنده:</span>
-                               <span className="text-xs font-black text-slate-900">{selectedReceipt.bankFrom}</span>
-                            </div>
-                         )}
-                         {selectedReceipt.bankTo && (
-                            <div className="flex justify-between border-b border-slate-50 pb-4">
-                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">بانک مقصد:</span>
-                               <span className="text-xs font-black text-slate-900">{selectedReceipt.bankTo}</span>
-                            </div>
-                         )}
-                         {selectedReceipt.cardLastFour && (
-                            <div className="flex justify-between border-b border-slate-50 pb-4">
-                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">۴ رقم آخر کارت:</span>
-                               <span className="text-xs font-black text-slate-900 tabular-nums">**** {selectedReceipt.cardLastFour}</span>
-                            </div>
-                         )}
-                         {selectedReceipt.trackingId && (
-                            <div className="flex justify-between border-b border-slate-50 pb-4">
-                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">شماره پیگیری:</span>
-                               <span className="text-xs font-black text-slate-900 tabular-nums">{selectedReceipt.trackingId}</span>
-                            </div>
-                         )}
-
                          {selectedReceipt.netProfit !== undefined && (
                            <div className="flex justify-between border-b border-slate-50 pb-4">
                               <span className="text-[10px] font-bold text-emerald-600 uppercase">مفاد معامله:</span>
@@ -250,8 +223,9 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                            </div>
                          )}
                          <div className="pt-2 text-right">
-                            <p className="text-[10px] font-medium text-slate-600 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed">
-                               {selectedReceipt.description || 'بدون شرح تراکنش'}
+                            <p className="text-[10px] font-bold text-slate-700 bg-slate-50/50 p-4 rounded-2xl italic leading-relaxed border border-slate-100">
+                               <span className="block mb-1 text-[8px] font-black text-slate-400 uppercase">شرح معامله:</span>
+                               {selectedReceipt.description || 'ثبت نقدینگی در سیستم صرافی'}
                             </p>
                          </div>
                       </div>
