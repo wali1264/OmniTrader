@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { 
   Search, UserPlus, ArrowDownLeft, 
@@ -8,8 +7,7 @@ import {
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from '../types';
 
-const SYSTEM_TIME_OFFSET = 3600000;
-const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+const getSystemNow = () => Date.now();
 
 interface AnonymousDepositsProps {
   transactions: Transaction[];

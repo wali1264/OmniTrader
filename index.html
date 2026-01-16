@@ -1,9 +1,11 @@
-
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Sarrafi Pro - سامانه جامع مدیریت صرافی</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
@@ -18,14 +20,10 @@
             color: #334155;
             letter-spacing: -0.01em;
         }
-
-        /* اعداد جدولی و رسمی */
         .tnum { 
             font-variant-numeric: tabular-nums;
             letter-spacing: -0.05em;
         }
-
-        /* استایل جداول رسمی */
         table {
             border-collapse: collapse;
             width: 100%;
@@ -37,8 +35,6 @@
             font-size: 0.7rem;
             letter-spacing: 0.05em;
         }
-        
-        /* اسکرول‌بار باریک و مدرن */
         ::-webkit-scrollbar {
             width: 5px;
             height: 5px;
@@ -53,14 +49,12 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #cbd5e1;
         }
-
         .formal-card {
             background: white;
             border: 1px solid #e2e8f0;
             border-radius: 0.75rem;
             box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }
-
         .fade-entry {
             animation: fastFade 0.15s ease-out forwards;
         }
@@ -68,12 +62,20 @@
             from { opacity: 0; transform: translateY(2px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
-        /* بهینه‌سازی فضا برای نمایشگرهای کوچک دسکتاپ */
-        @media (min-width: 1280px) {
-            .container-fluid {
-                padding-left: 2rem;
-                padding-right: 2rem;
+        @media print {
+            @page {
+                size: A4;
+                margin: 12mm;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+                width: 210mm;
+                height: 297mm;
+                background-color: white !important;
+            }
+            .no-print {
+                display: none !important;
             }
         }
     </style>

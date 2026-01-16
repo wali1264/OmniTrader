@@ -1,13 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  Search, Users, FileText, X, 
-  Plus, ArrowRightLeft,
-  TrendingUp, TrendingDown, AlertCircle, Hash, Lock, Unlock, Calculator, RefreshCw, Landmark, Wallet
-} from 'lucide-react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
-const SYSTEM_TIME_OFFSET = 3600000;
-const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+// Utility for icons from lucide-react
+import { 
+  Search as SearchIcon, 
+  Plus as PlusIcon, 
+  X as XIcon, 
+  Users as UsersIcon, 
+  ArrowRightLeft, 
+  Calculator, 
+  Percent,
+  ChevronDown
+} from 'lucide-react';
+
+const getSystemNow = () => Date.now();
 
 interface CustomerManagerProps {
   customers: Customer[];
@@ -33,9 +39,9 @@ export default function CustomerManager({
   
   const [newTrans, setNewTrans] = useState({ 
     amount: 0, 
-    currency: 'AFN', 
+    currency: 'USD', 
     description: '',
-    targetCurrency: 'USD',
+    targetCurrency: 'AFN',
     exchangeRate: 0,
     exchangeOp: 'multiply' as 'multiply' | 'divide',
     netProfit: 0
@@ -43,13 +49,23 @@ export default function CustomerManager({
   
   const [newCustomer, setNewCustomer] = useState({ name: '', code: '', phone: '' });
 
+  const exchangeCurrencies = useMemo(() => {
+    return SUPPORTED_CURRENCIES.filter(c => c.code !== 'IRT_BANK');
+  }, []);
+
+  const calculatedExchangeResult = useMemo(() => {
+    if (newTrans.amount <= 0 || newTrans.exchangeRate <= 0) return 0;
+    return newTrans.exchangeOp === 'multiply' 
+      ? newTrans.amount * newTrans.exchangeRate 
+      : newTrans.amount / newTrans.exchangeRate;
+  }, [newTrans.amount, newTrans.exchangeRate, newTrans.exchangeOp]);
+
   const getCustomerAccounting = (customer: Customer) => {
     const data: Record<string, { debit: number, credit: number, balance: number }> = {};
     const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED && t.customerId === customer.id);
     
     SUPPORTED_CURRENCIES.forEach(curr => {
       const initialVal = customer.balances[curr.code] || 0;
-      
       const debit = (initialVal > 0 ? initialVal : 0) + 
                     approved.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
                     approved.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
@@ -57,12 +73,7 @@ export default function CustomerManager({
       const credit = (initialVal < 0 ? Math.abs(initialVal) : 0) +
                      approved.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
                      approved.filter(t => t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code).reduce((sum, t) => sum + (t.convertedAmount || 0), 0);
-      
-      data[curr.code] = {
-        debit,
-        credit,
-        balance: debit - credit
-      };
+      data[curr.code] = { debit, credit, balance: debit - credit };
     });
     return data;
   };
@@ -76,19 +87,9 @@ export default function CustomerManager({
     return getCustomerAccounting(selectedCustomer);
   }, [selectedCustomer, transactions]);
 
-  const toggleLockCustomer = () => {
-    if (!selectedCustomer) return;
-    const isCurrentlyLocked = !!selectedCustomer.isLocked;
-    const action = isCurrentlyLocked ? 'بازگشایی' : 'قید کردن (تصفیه)';
-    if (confirm(`آیا از ${action} حساب ${selectedCustomer.name} مطمئن هستید؟`)) {
-      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, isLocked: !isCurrentlyLocked } : c));
-      setSelectedCustomer({ ...selectedCustomer, isLocked: !isCurrentlyLocked });
-    }
-  };
-
   const handleSaveNewCustomer = () => {
     if (!newCustomer.name || !newCustomer.code) {
-      alert("لطفاً نام و کد مشتری را وارد کنید.");
+      alert("نام و کد مشتری الزامی است.");
       return;
     }
     const customer: Customer = {
@@ -102,20 +103,12 @@ export default function CustomerManager({
       isLocked: false
     };
     setCustomers(prev => [...prev, customer]);
-    setShowAddModal(false);
     setNewCustomer({ name: '', code: '', phone: '' });
+    setShowAddModal(false);
   };
 
   const handleAddTransaction = () => {
-    if (!selectedCustomer || newTrans.amount <= 0) {
-      alert("لطفاً مبلغ معتبری وارد کنید.");
-      return;
-    }
-    if (selectedCustomer.isLocked) {
-      alert("⚠️ این حساب قید شده است.");
-      return;
-    }
-
+    if (!selectedCustomer || newTrans.amount <= 0) return;
     const transaction: Transaction = {
       id: 'TR-' + Math.random().toString(36).substr(2, 7).toUpperCase(),
       customerId: selectedCustomer.id,
@@ -127,57 +120,37 @@ export default function CustomerManager({
       status: TransactionStatus.PENDING,
       isBank: false
     };
-
     if (transModalState.type === TransactionType.EXCHANGE) {
-      if (newTrans.exchangeRate <= 0) {
-        alert("لطفاً نرخ تبادله را وارد کنید.");
-        return;
-      }
       transaction.targetCurrency = newTrans.targetCurrency;
       transaction.exchangeRate = newTrans.exchangeRate;
-      transaction.convertedAmount = newTrans.exchangeOp === 'multiply' 
-        ? newTrans.amount * newTrans.exchangeRate 
-        : newTrans.amount / newTrans.exchangeRate;
+      transaction.convertedAmount = calculatedExchangeResult;
       transaction.netProfit = newTrans.netProfit;
+      transaction.description = newTrans.description || `تبادله ${newTrans.amount} ${newTrans.currency} به ${newTrans.targetCurrency} با نرخ ${newTrans.exchangeRate}`;
     }
-
     setTransactions(prev => [...prev, transaction]);
     setTransModalState({ show: false, type: TransactionType.RESID });
-    setNewTrans({ amount: 0, currency: 'AFN', description: '', targetCurrency: 'USD', exchangeRate: 0, exchangeOp: 'multiply', netProfit: 0 });
+    setNewTrans({ ...newTrans, amount: 0, description: '', exchangeRate: 0, currency: 'USD', targetCurrency: 'AFN' });
   };
-
-  const previewConverted = useMemo(() => {
-    if (newTrans.amount <= 0 || newTrans.exchangeRate <= 0) return 0;
-    return newTrans.exchangeOp === 'multiply' 
-      ? newTrans.amount * newTrans.exchangeRate 
-      : newTrans.amount / newTrans.exchangeRate;
-  }, [newTrans.amount, newTrans.exchangeRate, newTrans.exchangeOp]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full text-right font-['Vazirmatn'] pb-10">
-      {/* Sidebar */}
       <div className="lg:col-span-3">
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sticky top-20">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-black text-slate-800 text-[11px] uppercase tracking-widest">لیست حسابات</h3>
-            <button onClick={() => setShowAddModal(true)} className="p-2 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-black transition-all"><Plus size={16} /></button>
+            <button onClick={() => setShowAddModal(true)} className="p-2 bg-slate-900 text-white rounded-xl hover:bg-black transition-all">
+              <PlusIcon size={16} />
+            </button>
           </div>
           <div className="relative mb-4">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input type="text" placeholder="جستجو..." className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-10 pl-3 text-[11px] font-bold outline-none focus:bg-white transition-all text-right" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <SearchIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+            <input type="text" placeholder="جستجو..." className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-10 pl-3 text-[11px] font-bold outline-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           <div className="space-y-1 max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar">
             {filteredCustomers.map(c => (
-              <button 
-                key={c.id} 
-                onClick={() => setSelectedCustomer(c)} 
-                className={`w-full p-4 rounded-2xl text-right transition-all border ${selectedCustomer?.id === c.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-transparent hover:bg-slate-50'}`}
-              >
+              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-4 rounded-2xl text-right transition-all border ${selectedCustomer?.id === c.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-transparent hover:bg-slate-50'}`}>
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    {c.isLocked && <Lock size={12} className={selectedCustomer?.id === c.id ? 'text-white' : 'text-rose-600'} />}
-                    <p className="font-black text-[12px]">{c.name}</p>
-                  </div>
+                  <p className="font-black text-[12px]">{c.name}</p>
                   <p className={`text-[10px] font-mono ${selectedCustomer?.id === c.id ? 'text-blue-100' : 'text-slate-400'}`}>{c.code}</p>
                 </div>
               </button>
@@ -186,253 +159,196 @@ export default function CustomerManager({
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="lg:col-span-9">
         {!selectedCustomer ? (
           <div className="h-full min-h-[500px] bg-white rounded-3xl border border-slate-200 flex flex-col items-center justify-center text-slate-300">
-            <Users size={64} className="mb-6 opacity-10" />
+            <UsersIcon size={64} className="mb-6 opacity-10" />
             <p className="font-black text-sm uppercase tracking-widest">یک مشتری را انتخاب کنید</p>
           </div>
         ) : (
           <div className="space-y-6 fade-entry">
-            {/* Customer Header */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6">
               <div className="flex items-center gap-6 text-right">
-                <div className="relative">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl font-black border border-blue-100 shadow-inner">{selectedCustomer.name.charAt(0)}</div>
-                  {selectedCustomer.isLocked && <div className="absolute -top-2 -right-2 bg-rose-600 text-white p-2 rounded-full shadow-lg border-4 border-white animate-bounce"><Lock size={14} /></div>}
-                </div>
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl font-black">{selectedCustomer.name.charAt(0)}</div>
                 <div>
-                  <div className="flex items-center gap-4">
-                    <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
-                    <button 
-                      onClick={toggleLockCustomer}
-                      className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 text-[10px] font-black border shadow-sm ${selectedCustomer.isLocked ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-rose-50 hover:text-rose-600'}`}
-                    >
-                      {selectedCustomer.isLocked ? <Lock size={14} /> : <Unlock size={14} />}
-                      {selectedCustomer.isLocked ? 'حساب قید شده' : 'قید بیلانس'}
-                    </button>
-                  </div>
-                  <p className="text-[10px] font-mono text-slate-400 mt-1 font-bold uppercase tracking-widest">Account ID: {selectedCustomer.code}</p>
+                  <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
+                  <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase">ID: {selectedCustomer.code}</p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button 
-                  disabled={selectedCustomer.isLocked}
-                  onClick={() => setTransModalState({show: true, type: TransactionType.RESID})} 
-                  className={`px-5 py-4 rounded-2xl font-black text-xs flex items-center gap-2 transition-all shadow-lg ${selectedCustomer.isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-50' : 'bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95'}`}
-                >
-                  <TrendingUp size={16} /> رسید
-                </button>
-                <button 
-                  disabled={selectedCustomer.isLocked}
-                  onClick={() => setTransModalState({show: true, type: TransactionType.BOARD})} 
-                  className={`px-5 py-4 rounded-2xl font-black text-xs flex items-center gap-2 transition-all shadow-lg ${selectedCustomer.isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-50' : 'bg-rose-600 text-white hover:bg-rose-700 active:scale-95'}`}
-                >
-                  <TrendingDown size={16} /> بورد
-                </button>
-                <button 
-                  disabled={selectedCustomer.isLocked}
-                  onClick={() => setTransModalState({show: true, type: TransactionType.EXCHANGE})} 
-                  className={`px-5 py-4 rounded-2xl font-black text-xs flex items-center gap-2 transition-all shadow-lg ${selectedCustomer.isLocked ? 'bg-slate-100 text-slate-400 cursor-not-allowed opacity-50' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}`}
-                >
-                  <ArrowRightLeft size={16} /> تبادله
+                <button onClick={() => setTransModalState({show: true, type: TransactionType.RESID})} className="px-5 py-4 rounded-2xl bg-emerald-600 text-white font-black text-xs">رسید</button>
+                <button onClick={() => setTransModalState({show: true, type: TransactionType.BOARD})} className="px-5 py-4 rounded-2xl bg-rose-600 text-white font-black text-xs">بورد</button>
+                <button onClick={() => setTransModalState({show: true, type: TransactionType.EXCHANGE})} className="px-5 py-4 rounded-2xl bg-blue-600 text-white font-black text-xs flex items-center gap-2">
+                  <ArrowRightLeft size={14} /> تبادله
                 </button>
               </div>
             </div>
 
-            {/* Balances Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {SUPPORTED_CURRENCIES.map(curr => {
                 const info = accounting[curr.code] || { debit: 0, credit: 0, balance: 0 };
-                const isCustomerDebtor = info.balance > 0;
-                const isShopDebtor = info.balance < 0;
-
                 return (
-                  <div key={curr.code} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-md transition-all">
-                    <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{curr.label}</span>
-                       <span className="text-[8px] font-black px-2 py-0.5 rounded bg-blue-100 text-blue-600 uppercase font-mono">{curr.code}</span>
-                    </div>
-                    <div className="p-6 space-y-4 text-right">
-                       <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-slate-400">بدهکار (Debit):</span>
-                          <span className="text-xs font-black text-rose-600 tabular-nums">{info.debit.toLocaleString()}</span>
-                       </div>
-                       <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-slate-400">بستانکار (Credit):</span>
-                          <span className="text-xs font-black text-emerald-600 tabular-nums">{info.credit.toLocaleString()}</span>
-                       </div>
-                       <div className="pt-4 border-t border-slate-50 flex justify-between items-baseline">
-                          <span className="text-[11px] font-black text-slate-900">بیلانس:</span>
-                          <div className="text-left">
-                            <p className={`text-2xl font-black tabular-nums ${isCustomerDebtor ? 'text-rose-700' : isShopDebtor ? 'text-emerald-700' : 'text-slate-300'}`}>
-                              {Math.abs(info.balance).toLocaleString()}
-                            </p>
-                            <span className={`text-[9px] font-black uppercase ${isCustomerDebtor ? 'text-rose-400' : isShopDebtor ? 'text-emerald-400' : 'text-slate-300'}`}>
-                               {isCustomerDebtor ? '(مشتری بدهکار)' : isShopDebtor ? '(صراف بدهکار)' : 'تصفیه'}
-                            </span>
-                          </div>
+                  <div key={curr.code} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-right">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">{curr.label}</span>
+                    <div className="mt-4 space-y-2">
+                       <div className="flex justify-between text-[10px]"><span>بدهکار (بورد):</span><span className="text-rose-600 font-bold">{info.debit.toLocaleString()}</span></div>
+                       <div className="flex justify-between text-[10px]"><span>بستانکار (رسید):</span><span className="text-emerald-600 font-bold">{info.credit.toLocaleString()}</span></div>
+                       <div className={`pt-2 border-t text-lg font-black ${info.balance > 0 ? 'text-rose-600' : info.balance < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
+                         {Math.abs(info.balance).toLocaleString()} 
+                         <span className="text-[10px] uppercase mr-1">{curr.code}</span>
+                         <span className="text-[9px] mr-1">({info.balance > 0 ? 'بدهکار' : info.balance < 0 ? 'بستانکار' : 'تسویه'})</span>
                        </div>
                     </div>
                   </div>
                 );
               })}
             </div>
-
-            {/* History Ledger */}
-            <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-              <div className="p-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <FileText size={18} className="text-blue-500" />
-                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">روزنامچه اختصاصی مشتری</h3>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-[12px] border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/50 text-slate-500 border-b border-slate-100 uppercase">
-                      <th className="p-5 font-black">تاریخ</th>
-                      <th className="p-5 font-black text-center">بدهکار (-)</th>
-                      <th className="p-5 font-black text-center">بستانکار (+)</th>
-                      <th className="p-5 font-black">شرح معامله (توضیحات نقدینگی)</th>
-                      <th className="p-5 font-black text-center">وضعیت</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {transactions
-                      .filter(t => t.customerId === selectedCustomer.id)
-                      .sort((a,b) => b.timestamp - a.timestamp)
-                      .slice(0, 30)
-                      .map(t => (
-                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-5 text-slate-400 tabular-nums">
-                            {new Date(t.timestamp).toLocaleDateString('fa-IR')} 
-                          </td>
-                          <td className="p-5 text-center font-black text-rose-600 tabular-nums">
-                            {t.type === TransactionType.BOARD ? `${t.amount.toLocaleString()} ${t.currency}` : t.type === TransactionType.EXCHANGE ? `${t.amount.toLocaleString()} ${t.currency}` : '---'}
-                          </td>
-                          <td className="p-5 text-center font-black text-emerald-600 tabular-nums">
-                            {t.type === TransactionType.RESID ? `${t.amount.toLocaleString()} ${t.currency}` : t.type === TransactionType.EXCHANGE ? `${(t.convertedAmount || 0).toLocaleString()} ${t.targetCurrency}` : '---'}
-                          </td>
-                          <td className="p-5 text-right">
-                            <div className="flex flex-col gap-1">
-                              <span className="text-slate-800 font-bold">{t.description || 'بدون شرح'}</span>
-                              <div className="flex items-center gap-2">
-                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${t.isBank ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'}`}>
-                                  {t.isBank ? <Landmark size={8} className="inline mr-1"/> : <Wallet size={8} className="inline mr-1"/>}
-                                  {t.isBank ? 'بانکی' : 'نقدینگی'}
-                                </span>
-                                {t.exchangeRate && (
-                                  <span className="text-[8px] font-black text-blue-400 border border-blue-50 px-1.5 py-0.5 rounded">
-                                    نرخ: {t.exchangeRate}
-                                  </span>
-                                )}
-                                {t.trackingId && (
-                                  <span className="text-[8px] font-mono text-slate-400">Ref: {t.trackingId}</span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="p-5 text-center">
-                            <span className={`px-3 py-1 rounded-full font-black text-[9px] uppercase ${t.status === TransactionStatus.APPROVED ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                              {t.status === TransactionStatus.APPROVED ? 'تائید' : 'انتظار'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
-        )
-      }
+        )}
+      </div>
 
-      {/* Add Transaction Modal */}
-      {transModalState.show && (
+      {/* مدال ثبت مشتری جدید */}
+      {showAddModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-300 text-right">
-            <h3 className="text-2xl font-black mb-8 flex items-center gap-4">
-              {transModalState.type === TransactionType.RESID ? <TrendingUp className="text-emerald-600" /> : transModalState.type === TransactionType.BOARD ? <TrendingDown className="text-rose-600" /> : <ArrowRightLeft className="text-blue-600" />}
-              {transModalState.type === TransactionType.RESID ? 'ثبت رسید' : transModalState.type === TransactionType.BOARD ? 'ثبت بورد' : 'ثبت تبادله ارزی'}
-            </h3>
-            <div className="space-y-6 font-['Vazirmatn']">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">مبلغ {transModalState.type === TransactionType.EXCHANGE ? '(ارز مبدأ)' : ''}</label>
-                <div className="flex gap-2">
-                  <input type="number" className="flex-1 p-5 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-black outline-none focus:bg-white transition-all text-right" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
-                  <select className="w-28 px-2 py-4 bg-slate-100 rounded-2xl font-black text-[11px] outline-none cursor-pointer" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
-                    {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                  </select>
+          <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl text-right animate-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black">ثبت مشتری جدید</h3>
+              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                <XIcon size={20} />
+              </button>
+            </div>
+            <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 mr-1">نام و تخلص</label>
+                  <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-right font-bold outline-none focus:border-blue-500 transition-all" placeholder="نام مشتری" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} />
                 </div>
-              </div>
-
-              {transModalState.type === TransactionType.EXCHANGE && (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">به ارز (ارز مقصد)</label>
-                    <select className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-sm outline-none" value={newTrans.targetCurrency} onChange={e => setNewTrans({...newTrans, targetCurrency: e.target.value})}>
-                      {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest">نرخ تبادله</label>
-                      <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                        <button type="button" onClick={() => setNewTrans({...newTrans, exchangeOp: 'multiply'})} className={`px-4 py-1.5 rounded-lg font-black text-xs transition-all ${newTrans.exchangeOp === 'multiply' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>×</button>
-                        <button type="button" onClick={() => setNewTrans({...newTrans, exchangeOp: 'divide'})} className={`px-4 py-1.5 rounded-lg font-black text-xs transition-all ${newTrans.exchangeOp === 'divide' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-400'}`}>÷</button>
-                      </div>
-                    </div>
-                    <input type="number" step="0.0001" className="w-full p-5 bg-blue-50 border border-blue-100 rounded-2xl font-black text-xl text-center outline-none" value={newTrans.exchangeRate || ''} onChange={e => setNewTrans({...newTrans, exchangeRate: Number(e.target.value)})} placeholder="0.00" />
-                  </div>
-                  
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
-                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1">حاصل محاسبه زنده:</p>
-                    <p className="text-xl font-black text-slate-700 tabular-nums">
-                      {previewConverted.toLocaleString()} <span className="text-[10px] font-bold text-blue-600 uppercase">{newTrans.targetCurrency}</span>
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">مفاد معامله (AFN)</label>
-                    <input type="number" className="w-full p-5 bg-emerald-50 border border-emerald-100 rounded-2xl font-black text-lg text-center outline-none" value={newTrans.netProfit || ''} onChange={e => setNewTrans({...newTrans, netProfit: Number(e.target.value)})} placeholder="0" />
-                  </div>
-                </>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">توضیحات</label>
-                <textarea className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-xs min-h-[100px] outline-none focus:bg-white text-right" placeholder="شرح..." value={newTrans.description} onChange={e => setNewTrans({...newTrans, description: e.target.value})} />
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={handleAddTransaction} className={`flex-1 py-5 rounded-2xl font-black text-lg text-white shadow-xl transition-all ${transModalState.type === TransactionType.RESID ? 'bg-emerald-600' : transModalState.type === TransactionType.BOARD ? 'bg-rose-600' : 'bg-blue-600'}`}>ثبت تراکنش</button>
-                <button onClick={() => setTransModalState({show: false, type: TransactionType.RESID})} className="px-8 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm">لغو</button>
-              </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 mr-1">کد شناسایی (منحصر به فرد)</label>
+                  <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-right font-bold outline-none focus:border-blue-500 transition-all" placeholder="مثلا: 101" value={newCustomer.code} onChange={e => setNewCustomer({...newCustomer, code: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 mr-1">شماره تماس</label>
+                  <input type="text" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl text-right font-bold outline-none focus:border-blue-500 transition-all" placeholder="07xxxxxxx" value={newCustomer.phone} onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})} />
+                </div>
+                <div className="flex gap-4 mt-8">
+                    <button onClick={handleSaveNewCustomer} className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-black shadow-lg hover:bg-black transition-all">ذخیره مشتری</button>
+                    <button onClick={() => setShowAddModal(false)} className="px-6 bg-slate-100 text-slate-500 py-4 rounded-xl font-bold">لغو</button>
+                </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add Customer Modal */}
-      {showAddModal && (
+      {/* مدال ثبت تراکنش */}
+      {transModalState.show && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl animate-in zoom-in duration-300">
-            <h3 className="text-2xl font-black mb-8 flex items-center gap-3 text-slate-900"><Users className="text-blue-600" /> ایجاد حساب مشتری</h3>
-            <div className="space-y-6 text-right font-['Vazirmatn']">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">نام کامل</label>
-                <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-sm outline-none focus:bg-white text-right" placeholder="نام مشتری" value={newCustomer.name} onChange={e => setNewCustomer({...newCustomer, name: e.target.value})} />
+          <div className={`bg-white rounded-[2rem] p-8 w-full ${transModalState.type === TransactionType.EXCHANGE ? 'max-w-xl' : 'max-w-md'} shadow-2xl text-right relative font-['Vazirmatn']`}>
+            {/* دکمه بستن در بالای مدال مطابق تصویر */}
+            <button onClick={() => setTransModalState({...transModalState, show: false})} className="absolute top-6 left-6 p-2 text-slate-300 hover:text-slate-500 transition-all"><XIcon size={22}/></button>
+            
+            {transModalState.type === TransactionType.EXCHANGE ? (
+              <div className="space-y-8">
+                {/* هدر مدال */}
+                <div className="flex items-center justify-center gap-3">
+                   <h3 className="text-lg font-black text-slate-800">ماشین حساب تبدیل ارزی</h3>
+                   <div className="p-2 bg-slate-900/5 rounded-lg text-slate-800"><Calculator size={20} /></div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* ردیف انتخاب ارزها */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <label className="text-[11px] font-black text-slate-400 mr-2">ارز مبدأ</label>
+                       <div className="relative">
+                         <select className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-black text-sm appearance-none outline-none focus:border-blue-500 transition-all" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
+                            {exchangeCurrencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                         </select>
+                         <ChevronDown size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[11px] font-black text-slate-400 mr-2">ارز مقصد</label>
+                       <div className="relative">
+                         <select className="w-full p-4 pr-12 bg-white border border-slate-200 rounded-2xl font-black text-sm appearance-none outline-none focus:border-blue-500 transition-all" value={newTrans.targetCurrency} onChange={e => setNewTrans({...newTrans, targetCurrency: e.target.value})}>
+                            {exchangeCurrencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+                         </select>
+                         <ChevronDown size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                       </div>
+                    </div>
+                  </div>
+
+                  {/* مبلغ ارز مبدأ */}
+                  <div className="space-y-2">
+                     <label className="text-[11px] font-black text-slate-400 mr-2">مبلغ ارز مبدأ</label>
+                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-blue-600" placeholder="0.00" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                  </div>
+
+                  {/* عملیات ضرب و تقسیم میانی مطابق تصویر */}
+                  <div className="relative flex items-center justify-center py-2">
+                     <div className="w-full h-px bg-slate-100 absolute"></div>
+                     <div className="relative bg-white border border-slate-100 rounded-xl p-1 flex shadow-sm">
+                        <button onClick={() => setNewTrans({...newTrans, exchangeOp: 'divide'})} className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-lg transition-all ${newTrans.exchangeOp === 'divide' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>÷</button>
+                        <button onClick={() => setNewTrans({...newTrans, exchangeOp: 'multiply'})} className={`w-10 h-10 rounded-lg flex items-center justify-center font-black text-lg transition-all ${newTrans.exchangeOp === 'multiply' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}>×</button>
+                     </div>
+                  </div>
+
+                  {/* نرخ تبدیل ارز */}
+                  <div className="space-y-2">
+                     <label className="text-[11px] font-black text-slate-400 mr-2">نرخ تبدیل ارز</label>
+                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-slate-800" placeholder="0.0000" value={newTrans.exchangeRate || ''} onChange={e => setNewTrans({...newTrans, exchangeRate: Number(e.target.value)})} />
+                  </div>
+
+                  {/* بخش خروجی نهایی و سود */}
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className="bg-[#f0fdf4] p-5 rounded-2xl border border-emerald-100 text-center">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">سود تبادله (AFN)</p>
+                        <div className="flex items-center justify-center gap-1">
+                          <input type="number" className="w-full bg-transparent border-none text-center font-black text-xl text-emerald-700 outline-none" value={newTrans.netProfit || 0} onChange={e => setNewTrans({...newTrans, netProfit: Number(e.target.value)})} />
+                        </div>
+                     </div>
+                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
+                        <p className="text-[10px] font-black text-slate-400 uppercase mb-2">خروجی نهایی</p>
+                        <div className="flex items-center justify-center gap-1">
+                          <span className="font-black text-xl text-slate-800 tabular-nums">{calculatedExchangeResult.toLocaleString()}</span>
+                          <span className="text-[10px] font-black text-slate-400 uppercase">{newTrans.targetCurrency}</span>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* دکمه ثبت نهایی */}
+                  <button onClick={handleAddTransaction} className="w-full py-5 bg-[#0f172a] text-white rounded-2xl font-black text-base shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3 mt-4">
+                     ثبت قطعی سند تبدیل ارز
+                  </button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">کد شناسایی</label>
-                <input type="text" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black font-mono text-sm outline-none focus:bg-white text-right" placeholder="C-100" value={newCustomer.code} onChange={e => setNewCustomer({...newCustomer, code: e.target.value})} />
+            ) : (
+              // استایل بورد و رسید معمولی
+              <div className="space-y-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xl font-black text-slate-900">ثبت {transModalState.type}</h3>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 mr-1 uppercase">مبلغ</label>
+                    <input type="number" className="w-full p-4 bg-slate-50 border rounded-xl text-right font-black outline-none focus:border-blue-500" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 mr-1 uppercase">واحد پول</label>
+                    <select className="w-full p-4 bg-slate-50 border rounded-xl font-bold outline-none" value={newTrans.currency} onChange={e => setNewTrans({...newTrans, currency: e.target.value})}>
+                        {SUPPORTED_CURRENCIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 mr-1 uppercase">توضیحات معامله</label>
+                    <textarea className="w-full p-4 bg-slate-50 border rounded-xl text-right font-medium min-h-[100px] outline-none" placeholder="شرح معامله..." value={newTrans.description} onChange={e => setNewTrans({...newTrans, description: e.target.value})} />
+                  </div>
+                  <div className="flex gap-4 mt-6">
+                    <button onClick={handleAddTransaction} className="flex-1 bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg hover:bg-blue-700 transition-all">ثبت نهایی</button>
+                    <button onClick={() => setTransModalState({...transModalState, show: false})} className="px-6 bg-slate-100 text-slate-500 py-4 rounded-xl font-bold">لغو</button>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={handleSaveNewCustomer} className="flex-1 bg-slate-900 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-black transition-all">ایجاد حساب</button>
-                <button onClick={() => setShowAddModal(false)} className="px-8 py-5 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm">لغو</button>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}

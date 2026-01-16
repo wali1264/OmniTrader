@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Zap, ArrowDownLeft, ArrowUpRight, Wallet, Landmark, 
@@ -7,8 +6,7 @@ import {
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, BankAccount } from '../types';
 
-const SYSTEM_TIME_OFFSET = 3600000;
-const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
+const getSystemNow = () => Date.now();
 
 interface GuestManagerProps {
   setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;

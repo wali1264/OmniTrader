@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Printer, FileText, Users, BookOpen, Calendar, ChevronLeft, ChevronRight, ArrowLeftRight, Share2 } from 'lucide-react';
 import { Transaction, Customer, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES } from '../types';
 
-const SYSTEM_TIME_OFFSET = 3600000;
+const SYSTEM_TIME_OFFSET = -18000000;
 const getSystemNow = () => Date.now() + SYSTEM_TIME_OFFSET;
 
 interface ReportManagerProps {

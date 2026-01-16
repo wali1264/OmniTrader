@@ -45,11 +45,6 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
         }
       });
       
-      // Extracting URLs from search grounding if available
-      const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
-      console.log("Sources:", sources);
-
-      // Simple extraction of JSON from response text
       const match = response.text.match(/\[.*\]/s);
       if (match) {
         const data = JSON.parse(match[0]);
@@ -208,7 +203,7 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
       </div>
 
       <div className="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className="p-8 bg-slate-50/30 border-b border-slate-50 flex justify-between items-center">
+        <div className="p-8 bg-slate-50/30 border-b border-slate-50 flex justify-between items-center text-right">
           <h3 className="text-xl font-black text-slate-900">توازن دارائی به تفکیک واحد پول</h3>
           <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black">
              <AlertCircle size={14} /> مبنای محاسبات: نرخ‌های لحظه‌ای ارز به افغانی
@@ -220,9 +215,10 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
               <tr className="text-slate-400 border-b border-slate-50">
                 <th className="py-6 px-10 font-black text-[10px] uppercase">واحد ارز</th>
                 <th className="py-6 px-4 font-black text-[10px] uppercase">سرمایه اولیه</th>
-                <th className="py-6 px-4 font-black text-[10px] uppercase">موجودی فعلی صندوق</th>
+                <th className="py-6 px-4 font-black text-[10px] uppercase">موجود صندوق</th>
                 <th className="py-6 px-4 font-black text-[10px] uppercase text-emerald-600">طلب از مشتری</th>
                 <th className="py-6 px-4 font-black text-[10px] uppercase text-rose-600">بدهی به مشتری</th>
+                <th className="py-6 px-4 font-black text-[10px] uppercase text-blue-600">بیلانس مشتریان</th>
                 <th className="py-6 px-10 font-black text-[10px] uppercase text-left">تراز خالص فعلی</th>
               </tr>
             </thead>
@@ -232,7 +228,8 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
                 const liquid = assetDetails.liquidByCurrency[curr.code] || 0;
                 const rec = assetDetails.receivablesByCurrency[curr.code] || 0;
                 const pay = assetDetails.payablesByCurrency[curr.code] || 0;
-                const net = (liquid + rec) - pay;
+                const clientBalance = rec - pay;
+                const net = liquid + clientBalance;
                 const growth = net - initial;
                 
                 return (
@@ -245,6 +242,9 @@ const AssetCalculator: React.FC<AssetCalculatorProps> = ({ customers, stats, glo
                     <td className="py-8 px-4 font-black text-slate-700 tabular-nums">{liquid.toLocaleString()}</td>
                     <td className="py-8 px-4 font-black text-emerald-600 tabular-nums">{rec.toLocaleString()}</td>
                     <td className="py-8 px-4 font-black text-rose-500 tabular-nums">{pay.toLocaleString()}</td>
+                    <td className={`py-8 px-4 font-black tabular-nums ${clientBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {clientBalance.toLocaleString()}
+                    </td>
                     <td className="py-8 px-10 text-left">
                       <p className={`text-lg font-black tabular-nums ${net >= 0 ? 'text-blue-600' : 'text-rose-700'}`}>{net.toLocaleString()}</p>
                       <p className={`text-[9px] font-black mt-1 ${growth >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>
