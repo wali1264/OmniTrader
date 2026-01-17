@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
@@ -8,75 +9,107 @@
     <meta http-equiv="Expires" content="0" />
     <title>Sarrafi Pro - سامانه جامع مدیریت صرافی</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #0f172a;
             --accent: #2563eb;
+            --bg-main: #f1f5f9;
+            --sidebar-bg: #0f172a;
         }
         body {
             font-family: 'Vazirmatn', sans-serif;
-            background-color: #f8fafc;
-            color: #334155;
+            background-color: var(--bg-main);
+            color: #1e293b;
             letter-spacing: -0.01em;
+            overflow: hidden;
         }
         .tnum { 
             font-variant-numeric: tabular-nums;
-            letter-spacing: -0.05em;
+            letter-spacing: -0.02em;
         }
+        /* استایل رسمی برای جداول */
         table {
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             width: 100%;
         }
         th {
-            font-weight: 700;
-            color: #64748b;
+            font-weight: 800;
+            color: #475569;
             text-transform: uppercase;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             letter-spacing: 0.05em;
+            background-color: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
         }
+        td {
+            border-bottom: 1px solid #f1f5f9;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        
+        /* اسکرول‌بار ظریف و رسمی */
         ::-webkit-scrollbar {
-            width: 5px;
-            height: 5px;
+            width: 6px;
+            height: 6px;
         }
         ::-webkit-scrollbar-track {
             background: transparent;
         }
         ::-webkit-scrollbar-thumb {
-            background: #e2e8f0;
-            border-radius: 10px;
+            background: #cbd5e1;
+            border-radius: 20px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #cbd5e1;
+            background: #94a3b8;
         }
+
+        /* کارت‌های رسمی */
         .formal-card {
             background: white;
             border: 1px solid #e2e8f0;
-            border-radius: 0.75rem;
-            box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
         }
+
+        /* انیمیشن‌های ملایم */
         .fade-entry {
-            animation: fastFade 0.15s ease-out forwards;
+            animation: formalFade 0.3s ease-out forwards;
         }
-        @keyframes fastFade {
-            from { opacity: 0; transform: translateY(2px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes formalFade {
+            from { opacity: 0; transform: scale(0.995); }
+            to { opacity: 1; transform: scale(1); }
         }
+
+        /* دکمه‌های رسمی */
+        .btn-formal {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn-formal:active {
+            transform: translateY(1px);
+        }
+
         @media print {
             @page {
                 size: A4;
-                margin: 12mm;
+                margin: 10mm;
             }
             body {
-                margin: 0;
-                padding: 0;
-                width: 210mm;
-                height: 297mm;
                 background-color: white !important;
             }
             .no-print {
                 display: none !important;
             }
+        }
+
+        /* شخصی‌سازی ورودی‌ها */
+        input, select, textarea {
+            transition: all 0.2s ease;
+        }
+        input:focus, select:focus, textarea:focus {
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
         }
     </style>
 <script type="importmap">

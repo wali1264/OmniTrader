@@ -1,11 +1,12 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { 
   Download, Upload, ShieldCheck, AlertTriangle, CheckCircle2, Users, 
   Lock, Save, Building, Eye, EyeOff, User as UserIcon,
   Receipt, Plus, Trash2, X, ShieldAlert, KeyRound, AlertOctagon, Terminal, Copy, ClipboardCheck, Trash,
-  CreditCard, Landmark, HardDrive, Construction, Wallet, User
+  CreditCard, Landmark, HardDrive, Construction, Wallet, RotateCcw, Info
 } from 'lucide-react';
-import { Customer, Transaction, User as SystemUser, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount } from '../types';
+import { Customer, Transaction, User as SystemUser, SUPPORTED_CURRENCIES, TransactionType, TransactionStatus, BankAccount, GlobalRate } from '../types';
 
 const getSystemNow = () => Date.now();
 const DEVELOPER_SECRET_KEY = '0796606605';
@@ -15,6 +16,7 @@ interface SettingsProps {
   customers: Customer[]; setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
   transactions: Transaction[]; setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>;
   bankAccounts: BankAccount[]; setBankAccounts: React.Dispatch<React.SetStateAction<BankAccount[]>>;
+  globalRates: GlobalRate[]; setGlobalRates: React.Dispatch<React.SetStateAction<GlobalRate[]>>;
   currentUser: SystemUser | null; setCurrentUser: (user: SystemUser | null) => void;
   shopName: string; setShopName: (name: string) => void;
   appStatus: 'ACTIVE' | 'LOCKED'; setAppStatus: (status: 'ACTIVE' | 'LOCKED') => void;
@@ -24,6 +26,7 @@ interface SettingsProps {
 const Settings: React.FC<SettingsProps> = ({ 
   users, setUsers, customers, setCustomers, 
   transactions, setTransactions, bankAccounts, setBankAccounts,
+  globalRates, setGlobalRates,
   currentUser, setCurrentUser, shopName, setShopName,
   appStatus, setAppStatus, isMasterSession
 }) => {
@@ -52,15 +55,29 @@ const Settings: React.FC<SettingsProps> = ({
   }, [status]);
 
   const handleExport = () => {
-    const backupData = { version: "12.0", timestamp: getSystemNow(), data: { users, customers, transactions, shopName, bankAccounts } };
+    const backupData = { 
+      version: "14.0", 
+      timestamp: getSystemNow(), 
+      shopName,
+      data: { 
+        users, 
+        customers, 
+        transactions, 
+        bankAccounts,
+        globalRates,
+        appStatus
+      } 
+    };
     const jsonString = JSON.stringify(backupData, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `sarrafi_backup_stable.json`;
+    
+    const dateStr = new Date().toLocaleDateString('fa-IR').replace(/\//g, '-');
+    link.download = `Sarrafi_Backup_Full_${dateStr}.json`;
     link.click();
-    setStatus({ type: 'success', message: 'پشتیبان با موفقیت ایجاد شد.' });
+    setStatus({ type: 'success', message: 'فایل پشتیبان کامل ایجاد شد. آن را در فلش خود ذخیره کنید.' });
   };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,12 +87,27 @@ const Settings: React.FC<SettingsProps> = ({
     reader.onload = (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
-        if (confirm('کل داده‌ها بازنویسی خواهند شد. ادامه می‌دهید؟')) {
-          setUsers(json.data.users); setCustomers(json.data.customers); setTransactions(json.data.transactions); setShopName(json.data.shopName);
-          if (json.data.bankAccounts) setBankAccounts(json.data.bankAccounts);
-          setStatus({ type: 'success', message: 'بازیابی انجام شد.' });
+        if (!json.data || !json.data.customers) {
+          throw new Error('فایل پشتیبان معتبر نیست.');
         }
-      } catch (err) { setStatus({ type: 'error', message: 'فایل نامعتبر.' }); }
+
+        if (confirm('⚠️ توجه: تمام اطلاعات فعلی با اطلاعات موجود در فلش جایگزین خواهد شد. آیا مطمئن هستید؟')) {
+          if (json.data.users) setUsers(json.data.users);
+          if (json.data.customers) setCustomers(json.data.customers);
+          if (json.data.transactions) setTransactions(json.data.transactions);
+          if (json.data.bankAccounts) setBankAccounts(json.data.bankAccounts);
+          if (json.data.globalRates) setGlobalRates(json.data.globalRates);
+          if (json.shopName) setShopName(json.shopName);
+          if (json.data.appStatus) setAppStatus(json.data.appStatus);
+          
+          setStatus({ type: 'success', message: 'تمام اطلاعات با موفقیت از فلش بازیابی شد.' });
+          
+          // ریست کردن ورودی فایل برای انتخاب مجدد در آینده
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+      } catch (err) { 
+        setStatus({ type: 'error', message: 'خطا: فایل انتخاب شده معتبر نیست یا آسیب دیده است.' }); 
+      }
     };
     reader.readAsText(file);
   };
@@ -166,7 +198,7 @@ const Settings: React.FC<SettingsProps> = ({
           مصارف دفتر
         </button>
         <button onClick={() => setActiveSubTab('backup')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold text-[11px] transition-all flex items-center justify-center gap-2 ${activeSubTab === 'backup' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
-          مدیریت داده‌ها
+          ذخیره در فلش (بکاپ)
         </button>
         <button onClick={() => setActiveSubTab('dev')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold text-[11px] transition-all flex items-center justify-center gap-2 ${activeSubTab === 'dev' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
           پنل سازنده 🏗️
@@ -345,23 +377,45 @@ const Settings: React.FC<SettingsProps> = ({
         )}
 
         {activeSubTab === 'backup' && (
-          <div className="max-w-2xl mx-auto space-y-10 animate-in fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <button onClick={handleExport} className="p-8 bg-blue-50 rounded-[2.5rem] border border-blue-100 text-center hover:bg-blue-100 transition-all group">
-                  <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl group-hover:scale-110 transition-all"><Download size={32} /></div>
-                  <h4 className="font-black text-slate-800">ایجاد نسخه پشتیبان</h4>
-                  <p className="text-[10px] text-slate-500 mt-2">دریافت فایل JSON از کل پایگاه داده</p>
-               </button>
-               <button onClick={() => { navigator.clipboard.writeText(JSON.stringify({ transactions, customers })); setStatus({type:'success', message:'دیتا کپی شد.'}) }} className="p-8 bg-emerald-50 rounded-[2.5rem] border border-emerald-100 text-center hover:bg-emerald-100 transition-all group">
-                  <div className="w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl group-hover:scale-110 transition-all"><ClipboardCheck size={32} /></div>
-                  <h4 className="font-black text-slate-800">کپی در حافظه</h4>
-                  <p className="text-[10px] text-slate-500 mt-2">کپی سریع دیتای تراکنش‌ها و مشتریان</p>
-               </button>
+          <div className="max-w-3xl mx-auto space-y-10 animate-in fade-in text-right">
+            <div className="bg-blue-50 p-6 rounded-3xl border border-blue-100 flex items-center gap-4 mb-8">
+               <Info className="text-blue-600 shrink-0" size={24} />
+               <p className="text-xs font-bold text-blue-900 leading-relaxed">
+                  <strong>مرکز بازیابی اضطراری:</strong> اگر برنامه شما حذف شد یا قصد دارید اطلاعات را به کامپیوتر دیگری منتقل کنید، ابتدا فایل پشتیبان را روی فلش ذخیره کنید و سپس در برنامه جدید از بخش «بازیابی از فلش» آن را فراخوانی کنید.
+               </p>
             </div>
-            <div className="p-10 bg-slate-50 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
-               <Upload size={32} className="mx-auto text-slate-300 mb-4" />
-               <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
-               <button onClick={() => fileInputRef.current?.click()} className="text-slate-500 py-2 font-black hover:text-blue-600 transition-all">بازیابی اطلاعات از فایل پشتیبان</button>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 flex flex-col items-center text-center hover:border-blue-500 transition-all shadow-sm">
+                  <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-xl"><Download size={32} /></div>
+                  <h4 className="text-xl font-black text-slate-800">ذخیره روی فلش</h4>
+                  <p className="text-xs text-slate-500 mt-2 mb-8 leading-relaxed">ایجاد فایل پشتیبان کامل از تمام تراکنش‌ها و حسابات جهت نگهداری در فلش مموری.</p>
+                  <button onClick={handleExport} className="w-full bg-[#0f172a] text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3">
+                     <HardDrive size={18} /> ساخت فایل پشتیبان
+                  </button>
+               </div>
+
+               <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 flex flex-col items-center text-center hover:border-emerald-500 transition-all shadow-sm">
+                  <div className="w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-xl"><RotateCcw size={32} /></div>
+                  <h4 className="text-xl font-black text-slate-800">بازیابی از فلش</h4>
+                  <p className="text-xs text-slate-500 mt-2 mb-8 leading-relaxed">فراخوانی اطلاعات ذخیره شده در فلش و بازگرداندن تمام اسناد به برنامه جدید.</p>
+                  <input type="file" ref={fileInputRef} onChange={handleImport} className="hidden" accept=".json" />
+                  <button onClick={() => fileInputRef.current?.click()} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3">
+                     <Upload size={18} /> انتخاب فایل از فلش
+                  </button>
+               </div>
+            </div>
+
+            <div className="bg-amber-50 p-8 rounded-[2.5rem] border border-amber-100 mt-8">
+               <div className="flex items-center gap-3 text-amber-700 mb-4">
+                  <AlertTriangle size={20} />
+                  <h5 className="font-black text-sm">نکات حیاتی امنیتی:</h5>
+               </div>
+               <ul className="text-[11px] font-bold text-amber-800 space-y-3 list-disc pr-4">
+                  <li>همیشه بعد از اتمام کارهای روزانه، یک نسخه پشتیبان روی فلش ذخیره کنید.</li>
+                  <li>در صورت مفقود شدن فایل پشتیبان، اطلاعات قابل بازیابی نخواهند بود.</li>
+                  <li>فایل پشتیبان را در جای امن نگهداری کنید زیرا حاوی تمام اسناد مالی شماست.</li>
+               </ul>
             </div>
           </div>
         )}
@@ -401,8 +455,8 @@ const Settings: React.FC<SettingsProps> = ({
 
         {/* Watermark/Brand */}
         <div className="absolute bottom-8 left-0 right-0 flex justify-center pointer-events-none">
-           <p className="text-[8px] font-black text-slate-200 uppercase tracking-[0.5em] text-center">
-              MERAJ SALEHI PRODUCTION AND PROGRAMMING COMPANY
+           <p className="text-[8px] font-black text-blue-700/40 uppercase tracking-[0.3em] text-center">
+              Meraj Salehi Programming and Production Company
            </p>
         </div>
       </div>

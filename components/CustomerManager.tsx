@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
@@ -10,7 +11,17 @@ import {
   ArrowRightLeft, 
   Calculator, 
   Percent,
-  ChevronDown
+  ChevronDown,
+  BookOpen,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  CalendarDays,
+  ChevronRight,
+  ChevronLeft,
+  History
 } from 'lucide-react';
 
 const getSystemNow = () => Date.now();
@@ -37,6 +48,9 @@ export default function CustomerManager({
   const [showAddModal, setShowAddModal] = useState(false);
   const [transModalState, setTransModalState] = useState<{show: boolean, type: TransactionType}>({ show: false, type: TransactionType.RESID });
   
+  // وضعیت تاریخ فعال برای مشاهده صفحه دفتر روزانه
+  const [activeLedgerDate, setActiveLedgerDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
   const [newTrans, setNewTrans] = useState({ 
     amount: 0, 
     currency: 'USD', 
@@ -87,6 +101,47 @@ export default function CustomerManager({
     return getCustomerAccounting(selectedCustomer);
   }, [selectedCustomer, transactions]);
 
+  // محاسبه داده‌های صفحه دفتر روزانه (مانده از قبل، تراکنش‌های روز، مانده نهایی)
+  const ledgerPageData = useMemo(() => {
+    if (!selectedCustomer) return { openingBalances: {}, currentTransactions: [], closingBalances: {} };
+
+    const selectedStartTime = new Date(activeLedgerDate).setHours(0,0,0,0);
+    const selectedEndTime = new Date(activeLedgerDate).setHours(23,59,59,999);
+
+    const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED && t.customerId === selectedCustomer.id);
+    
+    const openingBalances: Record<string, number> = {};
+    const closingBalances: Record<string, number> = {};
+
+    SUPPORTED_CURRENCIES.forEach(curr => {
+      const initial = selectedCustomer.balances[curr.code] || 0;
+      
+      // محاسبه مانده از قبل (تمام تراکنش‌های قبل از شروع روز انتخابی)
+      const pastTrans = approved.filter(t => t.timestamp < selectedStartTime);
+      const pastDebit = pastTrans.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
+                        pastTrans.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
+      const pastCredit = pastTrans.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
+                         pastTrans.filter(t => t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code).reduce((sum, t) => sum + (t.convertedAmount || 0), 0);
+      
+      openingBalances[curr.code] = initial + pastDebit - pastCredit;
+
+      // تراکنش‌های امروز
+      const todayTrans = approved.filter(t => t.timestamp >= selectedStartTime && t.timestamp <= selectedEndTime);
+      const todayDebit = todayTrans.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
+                         todayTrans.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
+      const todayCredit = todayTrans.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
+                          todayTrans.filter(t => t.type === TransactionType.EXCHANGE && t.targetCurrency === curr.code).reduce((sum, t) => sum + (t.convertedAmount || 0), 0);
+
+      closingBalances[curr.code] = openingBalances[curr.code] + todayDebit - todayCredit;
+    });
+
+    const currentTransactions = transactions
+      .filter(t => t.customerId === selectedCustomer.id && t.timestamp >= selectedStartTime && t.timestamp <= selectedEndTime)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    return { openingBalances, currentTransactions, closingBalances };
+  }, [selectedCustomer, transactions, activeLedgerDate]);
+
   const handleSaveNewCustomer = () => {
     if (!newCustomer.name || !newCustomer.code) {
       alert("نام و کد مشتری الزامی است.");
@@ -132,6 +187,12 @@ export default function CustomerManager({
     setNewTrans({ ...newTrans, amount: 0, description: '', exchangeRate: 0, currency: 'USD', targetCurrency: 'AFN' });
   };
 
+  const changeLedgerDay = (offset: number) => {
+    const d = new Date(activeLedgerDate);
+    d.setDate(d.getDate() + offset);
+    setActiveLedgerDate(d.toISOString().split('T')[0]);
+  };
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full text-right font-['Vazirmatn'] pb-10">
       <div className="lg:col-span-3">
@@ -167,41 +228,198 @@ export default function CustomerManager({
           </div>
         ) : (
           <div className="space-y-6 fade-entry">
+            {/* هدر مشتری */}
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-6">
               <div className="flex items-center gap-6 text-right">
                 <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl font-black">{selectedCustomer.name.charAt(0)}</div>
                 <div>
                   <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
-                  <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase">ID: {selectedCustomer.code}</p>
+                  <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase">کد شناسایی: {selectedCustomer.code}</p>
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setTransModalState({show: true, type: TransactionType.RESID})} className="px-5 py-4 rounded-2xl bg-emerald-600 text-white font-black text-xs">رسید</button>
-                <button onClick={() => setTransModalState({show: true, type: TransactionType.BOARD})} className="px-5 py-4 rounded-2xl bg-rose-600 text-white font-black text-xs">بورد</button>
+                <button onClick={() => setTransModalState({show: true, type: TransactionType.RESID})} className="px-5 py-4 rounded-2xl bg-emerald-600 text-white font-black text-xs">ثبت رسید (+)</button>
+                <button onClick={() => setTransModalState({show: true, type: TransactionType.BOARD})} className="px-5 py-4 rounded-2xl bg-rose-600 text-white font-black text-xs">ثبت بورد (-)</button>
                 <button onClick={() => setTransModalState({show: true, type: TransactionType.EXCHANGE})} className="px-5 py-4 rounded-2xl bg-blue-600 text-white font-black text-xs flex items-center gap-2">
-                  <ArrowRightLeft size={14} /> تبادله
+                  <ArrowRightLeft size={14} /> تبادله ارز
                 </button>
               </div>
             </div>
 
+            {/* کارت‌های بیلانس کلی فعلی */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {SUPPORTED_CURRENCIES.map(curr => {
                 const info = accounting[curr.code] || { debit: 0, credit: 0, balance: 0 };
                 return (
-                  <div key={curr.code} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-right">
+                  <div key={curr.code} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-right relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-1 h-full bg-slate-50 group-hover:bg-blue-500 transition-colors"></div>
                     <span className="text-[10px] font-black text-slate-400 uppercase">{curr.label}</span>
                     <div className="mt-4 space-y-2">
-                       <div className="flex justify-between text-[10px]"><span>بدهکار (بورد):</span><span className="text-rose-600 font-bold">{info.debit.toLocaleString()}</span></div>
-                       <div className="flex justify-between text-[10px]"><span>بستانکار (رسید):</span><span className="text-emerald-600 font-bold">{info.credit.toLocaleString()}</span></div>
+                       <div className="flex justify-between text-[10px]"><span>بورد (Debit):</span><span className="text-rose-600 font-bold">{info.debit.toLocaleString()}</span></div>
+                       <div className="flex justify-between text-[10px]"><span>رسید (Credit):</span><span className="text-emerald-600 font-bold">{info.credit.toLocaleString()}</span></div>
                        <div className={`pt-2 border-t text-lg font-black ${info.balance > 0 ? 'text-rose-600' : info.balance < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
                          {Math.abs(info.balance).toLocaleString()} 
                          <span className="text-[10px] uppercase mr-1">{curr.code}</span>
-                         <span className="text-[9px] mr-1">({info.balance > 0 ? 'بدهکار' : info.balance < 0 ? 'بستانکار' : 'تسویه'})</span>
+                         <span className="text-[9px] mr-1 opacity-40">({info.balance > 0 ? 'بدهکار' : info.balance < 0 ? 'بستانکار' : 'تسویه'})</span>
                        </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+
+            {/* نوار انتخاب روز (صفحات دفتر) */}
+            <div className="bg-slate-900 text-white p-4 rounded-3xl flex items-center justify-between shadow-lg">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => changeLedgerDay(1)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><ChevronRight size={20}/></button>
+                  <div className="flex items-center gap-3 bg-white/5 px-4 py-2 rounded-2xl border border-white/10">
+                    <CalendarDays size={18} className="text-blue-400" />
+                    <span className="text-sm font-black tabular-nums">
+                      {new Date(activeLedgerDate).toLocaleDateString('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                    </span>
+                  </div>
+                  <button onClick={() => changeLedgerDay(-1)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><ChevronLeft size={20}/></button>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button onClick={() => setActiveLedgerDate(new Date().toISOString().split('T')[0])} className="text-[10px] font-bold bg-blue-600 px-4 py-2 rounded-xl">امروز (صفحه جاری)</button>
+                  <div className="h-6 w-px bg-white/10"></div>
+                  <BookOpen size={20} className="text-slate-500" />
+                </div>
+            </div>
+
+            {/* دفترچه حساب روزانه (Daily Ledger Page) */}
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[600px]">
+               <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
+                  <div className="flex items-center gap-3">
+                     <History size={20} className="text-blue-600" />
+                     <h4 className="text-lg font-black text-slate-900">صفحه روزانه دفتر</h4>
+                  </div>
+                  <div className="flex gap-3">
+                    {SUPPORTED_CURRENCIES.map(curr => {
+                      const bal = ledgerPageData.openingBalances[curr.code] || 0;
+                      if (bal === 0) return null;
+                      return (
+                        <div key={curr.code} className="text-[10px] font-black bg-white border border-slate-100 px-3 py-1 rounded-full flex gap-1">
+                          <span className="text-slate-400">مانده {curr.code}:</span>
+                          <span className={bal > 0 ? 'text-rose-600' : 'text-emerald-600'}>{Math.abs(bal).toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+               </div>
+               
+               <div className="flex-1 overflow-x-auto">
+                  <table className="w-full text-right border-collapse">
+                     <thead>
+                        <tr className="bg-slate-50/50 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                           <th className="py-5 px-8 text-right">زمان</th>
+                           <th className="py-5 px-4 text-right">نوع معامله</th>
+                           <th className="py-5 px-4 text-center">مبلغ</th>
+                           <th className="py-5 px-4 text-right">شرح معامله</th>
+                           <th className="py-5 px-8 text-left">وضعیت</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-50">
+                        {/* سطر مانده از قبل (Opening Balance) */}
+                        <tr className="bg-blue-50/30">
+                          <td colSpan={2} className="py-6 px-8 text-xs font-black text-blue-800 italic">مانده منتقل شده از صفحات قبل (Opening Balance)</td>
+                          <td colSpan={2}></td>
+                          <td className="py-6 px-8 text-left">
+                            <div className="flex flex-col items-end gap-1">
+                              {SUPPORTED_CURRENCIES.map(curr => {
+                                const bal = ledgerPageData.openingBalances[curr.code] || 0;
+                                if (bal === 0) return null;
+                                return (
+                                  <div key={curr.code} className="text-[11px] font-black tabular-nums">
+                                    <span className={bal > 0 ? 'text-rose-600' : 'text-emerald-600'}>{Math.abs(bal).toLocaleString()}</span>
+                                    <span className="text-[8px] text-slate-400 mr-1 uppercase">{curr.code}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* لیست تراکنش‌های روز انتخابی */}
+                        {ledgerPageData.currentTransactions.map(t => (
+                           <tr key={t.id} className="hover:bg-slate-50/50 transition-all group">
+                              <td className="py-6 px-8 text-[11px] font-bold text-slate-400 tabular-nums">
+                                 {new Date(t.timestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })}
+                              </td>
+                              <td className="py-6 px-4">
+                                 <div className="flex items-center gap-2">
+                                    <div className={`p-1.5 rounded-lg ${t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
+                                       {t.type === TransactionType.RESID ? <ArrowDownLeft size={14} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={14} /> : <ArrowRightLeft size={14} />}
+                                    </div>
+                                    <span className="text-xs font-black text-slate-700">{t.type} {t.isBank ? '(بانکی)' : '(نقدی)'}</span>
+                                 </div>
+                              </td>
+                              <td className="py-6 px-4 text-center">
+                                 <div className="flex flex-col items-center">
+                                    <span className={`text-base font-black tabular-nums ${t.type === TransactionType.RESID ? 'text-emerald-600' : t.type === TransactionType.BOARD ? 'text-rose-600' : 'text-blue-600'}`}>
+                                       {t.amount.toLocaleString()}
+                                    </span>
+                                    <span className="text-[9px] font-black uppercase text-slate-400">{t.currency}</span>
+                                 </div>
+                              </td>
+                              <td className="py-6 px-4">
+                                 <p className="text-[11px] font-bold text-slate-500 max-w-xs leading-relaxed italic">
+                                    {t.description || 'ثبت در سیستم'}
+                                 </p>
+                              </td>
+                              <td className="py-6 px-8 text-left">
+                                 <div className="flex items-center justify-end gap-2">
+                                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                                       t.status === TransactionStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : 
+                                       t.status === TransactionStatus.PENDING ? 'bg-amber-100 text-amber-700' : 
+                                       'bg-rose-100 text-rose-700'
+                                    }`}>
+                                       {t.status === TransactionStatus.APPROVED ? 'تأیید' : t.status === TransactionStatus.PENDING ? 'انتظار' : 'رد'}
+                                    </span>
+                                    {t.status === TransactionStatus.APPROVED ? <CheckCircle2 size={14} className="text-emerald-500" /> : <Clock size={14} className="text-amber-500" />}
+                                 </div>
+                              </td>
+                           </tr>
+                        ))}
+
+                        {ledgerPageData.currentTransactions.length === 0 && (
+                           <tr>
+                              <td colSpan={5} className="py-24 text-center">
+                                 <div className="flex flex-col items-center gap-4 text-slate-200">
+                                    <AlertCircle size={48} className="opacity-10" />
+                                    <p className="text-sm font-black italic">در این تاریخ تراکنشی برای مشتری ثبت نشده است.</p>
+                                 </div>
+                              </td>
+                           </tr>
+                        )}
+
+                        {/* سطر مانده نهایی (Closing Balance) */}
+                        <tr className="bg-slate-900 text-white">
+                          <td colSpan={2} className="py-8 px-8 text-sm font-black">قید مانده نهایی و انتقال به صفحه بعد (Closing Balance)</td>
+                          <td colSpan={2}></td>
+                          <td className="py-8 px-8 text-left">
+                            <div className="flex flex-col items-end gap-2">
+                              {SUPPORTED_CURRENCIES.map(curr => {
+                                const bal = ledgerPageData.closingBalances[curr.code] || 0;
+                                if (bal === 0) return null;
+                                return (
+                                  <div key={curr.code} className="flex flex-col items-end">
+                                    <div className="text-lg font-black tabular-nums">
+                                      <span className={bal > 0 ? 'text-rose-400' : 'text-emerald-400'}>{Math.abs(bal).toLocaleString()}</span>
+                                      <span className="text-[10px] text-white/40 mr-2 uppercase">{curr.code}</span>
+                                    </div>
+                                    <span className="text-[8px] font-bold text-white/30 uppercase tracking-widest">
+                                      {bal > 0 ? 'بدهکار (Debtor)' : 'بستانکار (Creditor)'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        </tr>
+                     </tbody>
+                  </table>
+               </div>
             </div>
           </div>
         )}
@@ -243,7 +461,7 @@ export default function CustomerManager({
       {transModalState.show && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
           <div className={`bg-white rounded-[2rem] p-8 w-full ${transModalState.type === TransactionType.EXCHANGE ? 'max-w-xl' : 'max-w-md'} shadow-2xl text-right relative font-['Vazirmatn']`}>
-            {/* دکمه بستن در بالای مدال مطابق تصویر */}
+            {/* دکمه بستن در بالای مدال */}
             <button onClick={() => setTransModalState({...transModalState, show: false})} className="absolute top-6 left-6 p-2 text-slate-300 hover:text-slate-500 transition-all"><XIcon size={22}/></button>
             
             {transModalState.type === TransactionType.EXCHANGE ? (
@@ -283,7 +501,7 @@ export default function CustomerManager({
                      <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-blue-600" placeholder="0.00" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
                   </div>
 
-                  {/* عملیات ضرب و تقسیم میانی مطابق تصویر */}
+                  {/* عملیات ضرب و تقسیم میانی */}
                   <div className="relative flex items-center justify-center py-2">
                      <div className="w-full h-px bg-slate-100 absolute"></div>
                      <div className="relative bg-white border border-slate-100 rounded-xl p-1 flex shadow-sm">
