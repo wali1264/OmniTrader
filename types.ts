@@ -69,6 +69,7 @@ export interface Customer {
   notes: string;
   balances: Record<string, number>;
   isLocked?: boolean;
+  lastLockedTimestamp?: number;
 }
 
 export interface Transaction {

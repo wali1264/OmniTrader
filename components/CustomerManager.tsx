@@ -21,10 +21,18 @@ import {
   CalendarDays,
   ChevronRight,
   ChevronLeft,
-  History
+  History,
+  ShieldCheck,
+  RotateCcw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const getSystemNow = () => Date.now();
+
+interface EnhancedCustomer extends Customer {
+  lastLockedTimestamp?: number;
+}
 
 interface CustomerManagerProps {
   customers: Customer[];
@@ -44,11 +52,13 @@ export default function CustomerManager({
   setGlobalRates 
 }: CustomerManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<EnhancedCustomer | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [transModalState, setTransModalState] = useState<{show: boolean, type: TransactionType}>({ show: false, type: TransactionType.RESID });
   
-  // وضعیت تاریخ فعال برای مشاهده صفحه دفتر روزانه
+  // وضعیت برای مشاهده کامل تاریخچه (جهت رفع شک مشتری)
+  const [auditMode, setAuditMode] = useState(false);
+
   const [activeLedgerDate, setActiveLedgerDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const [newTrans, setNewTrans] = useState({ 
@@ -74,7 +84,7 @@ export default function CustomerManager({
       : newTrans.amount / newTrans.exchangeRate;
   }, [newTrans.amount, newTrans.exchangeRate, newTrans.exchangeOp]);
 
-  const getCustomerAccounting = (customer: Customer) => {
+  const getCustomerAccounting = (customer: EnhancedCustomer) => {
     const data: Record<string, { debit: number, credit: number, balance: number }> = {};
     const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED && t.customerId === customer.id);
     
@@ -101,12 +111,15 @@ export default function CustomerManager({
     return getCustomerAccounting(selectedCustomer);
   }, [selectedCustomer, transactions]);
 
-  // محاسبه داده‌های صفحه دفتر روزانه (مانده از قبل، تراکنش‌های روز، مانده نهایی)
   const ledgerPageData = useMemo(() => {
-    if (!selectedCustomer) return { openingBalances: {}, currentTransactions: [], closingBalances: {} };
+    if (!selectedCustomer) return { openingBalances: {}, currentTransactions: [], closingBalances: {}, isPostLock: false };
 
+    const lockTime = selectedCustomer.lastLockedTimestamp || 0;
     const selectedStartTime = new Date(activeLedgerDate).setHours(0,0,0,0);
     const selectedEndTime = new Date(activeLedgerDate).setHours(23,59,59,999);
+
+    // اگر در حالت Audit بودیم، محدودیت زمانی قید را برمی‌داریم
+    const effectiveStartTime = auditMode ? selectedStartTime : Math.max(selectedStartTime, lockTime);
 
     const approved = transactions.filter(t => t.status === TransactionStatus.APPROVED && t.customerId === selectedCustomer.id);
     
@@ -116,8 +129,7 @@ export default function CustomerManager({
     SUPPORTED_CURRENCIES.forEach(curr => {
       const initial = selectedCustomer.balances[curr.code] || 0;
       
-      // محاسبه مانده از قبل (تمام تراکنش‌های قبل از شروع روز انتخابی)
-      const pastTrans = approved.filter(t => t.timestamp < selectedStartTime);
+      const pastTrans = approved.filter(t => t.timestamp < effectiveStartTime);
       const pastDebit = pastTrans.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
                         pastTrans.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
       const pastCredit = pastTrans.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
@@ -125,8 +137,7 @@ export default function CustomerManager({
       
       openingBalances[curr.code] = initial + pastDebit - pastCredit;
 
-      // تراکنش‌های امروز
-      const todayTrans = approved.filter(t => t.timestamp >= selectedStartTime && t.timestamp <= selectedEndTime);
+      const todayTrans = approved.filter(t => t.timestamp >= effectiveStartTime && t.timestamp <= selectedEndTime);
       const todayDebit = todayTrans.filter(t => t.type === TransactionType.BOARD && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
                          todayTrans.filter(t => t.type === TransactionType.EXCHANGE && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0);
       const todayCredit = todayTrans.filter(t => t.type === TransactionType.RESID && t.currency === curr.code).reduce((sum, t) => sum + t.amount, 0) +
@@ -136,11 +147,16 @@ export default function CustomerManager({
     });
 
     const currentTransactions = transactions
-      .filter(t => t.customerId === selectedCustomer.id && t.timestamp >= selectedStartTime && t.timestamp <= selectedEndTime)
+      .filter(t => t.customerId === selectedCustomer.id && t.timestamp >= effectiveStartTime && t.timestamp <= selectedEndTime)
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    return { openingBalances, currentTransactions, closingBalances };
-  }, [selectedCustomer, transactions, activeLedgerDate]);
+    return { 
+      openingBalances, 
+      currentTransactions, 
+      closingBalances, 
+      isPostLock: !auditMode && lockTime > selectedStartTime && lockTime <= selectedEndTime 
+    };
+  }, [selectedCustomer, transactions, activeLedgerDate, auditMode]);
 
   const handleSaveNewCustomer = () => {
     if (!newCustomer.name || !newCustomer.code) {
@@ -209,7 +225,7 @@ export default function CustomerManager({
           </div>
           <div className="space-y-1 max-h-[calc(100vh-320px)] overflow-y-auto custom-scrollbar">
             {filteredCustomers.map(c => (
-              <button key={c.id} onClick={() => setSelectedCustomer(c)} className={`w-full p-4 rounded-2xl text-right transition-all border ${selectedCustomer?.id === c.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+              <button key={c.id} onClick={() => { setSelectedCustomer(c); setAuditMode(false); }} className={`w-full p-4 rounded-2xl text-right transition-all border ${selectedCustomer?.id === c.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-transparent hover:bg-slate-50'}`}>
                 <div className="flex justify-between items-center">
                   <p className="font-black text-[12px]">{c.name}</p>
                   <p className={`text-[10px] font-mono ${selectedCustomer?.id === c.id ? 'text-blue-100' : 'text-slate-400'}`}>{c.code}</p>
@@ -234,38 +250,31 @@ export default function CustomerManager({
                 <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-2xl font-black">{selectedCustomer.name.charAt(0)}</div>
                 <div>
                   <h2 className="text-2xl font-black text-slate-900">{selectedCustomer.name}</h2>
-                  <p className="text-[10px] font-mono text-slate-400 mt-1 uppercase">کد شناسایی: {selectedCustomer.code}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <p className="text-[10px] font-mono text-slate-400 uppercase">کد شناسایی: {selectedCustomer.code}</p>
+                    {selectedCustomer.lastLockedTimestamp && (
+                      <span className="flex items-center gap-1 text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-widest">
+                        <ShieldCheck size={10} /> حساب تصفیه شده
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2">
+                <button 
+                  onClick={() => setAuditMode(!auditMode)} 
+                  className={`px-5 py-4 rounded-2xl font-black text-xs flex items-center gap-2 transition-all ${auditMode ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'}`}
+                  title="مشاهده تمام تاریخچه قبل از تصفیه (برای رفع شک مشتری)"
+                >
+                  {auditMode ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {auditMode ? 'بستن حالت بازبینی' : 'حالت بازبینی (Audit)'}
+                </button>
                 <button onClick={() => setTransModalState({show: true, type: TransactionType.RESID})} className="px-5 py-4 rounded-2xl bg-emerald-600 text-white font-black text-xs">ثبت رسید (+)</button>
                 <button onClick={() => setTransModalState({show: true, type: TransactionType.BOARD})} className="px-5 py-4 rounded-2xl bg-rose-600 text-white font-black text-xs">ثبت بورد (-)</button>
                 <button onClick={() => setTransModalState({show: true, type: TransactionType.EXCHANGE})} className="px-5 py-4 rounded-2xl bg-blue-600 text-white font-black text-xs flex items-center gap-2">
                   <ArrowRightLeft size={14} /> تبادله ارز
                 </button>
               </div>
-            </div>
-
-            {/* کارت‌های بیلانس کلی فعلی */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {SUPPORTED_CURRENCIES.map(curr => {
-                const info = accounting[curr.code] || { debit: 0, credit: 0, balance: 0 };
-                return (
-                  <div key={curr.code} className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-right relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 w-1 h-full bg-slate-50 group-hover:bg-blue-500 transition-colors"></div>
-                    <span className="text-[10px] font-black text-slate-400 uppercase">{curr.label}</span>
-                    <div className="mt-4 space-y-2">
-                       <div className="flex justify-between text-[10px]"><span>بورد (Debit):</span><span className="text-rose-600 font-bold">{info.debit.toLocaleString()}</span></div>
-                       <div className="flex justify-between text-[10px]"><span>رسید (Credit):</span><span className="text-emerald-600 font-bold">{info.credit.toLocaleString()}</span></div>
-                       <div className={`pt-2 border-t text-lg font-black ${info.balance > 0 ? 'text-rose-600' : info.balance < 0 ? 'text-emerald-600' : 'text-slate-900'}`}>
-                         {Math.abs(info.balance).toLocaleString()} 
-                         <span className="text-[10px] uppercase mr-1">{curr.code}</span>
-                         <span className="text-[9px] mr-1 opacity-40">({info.balance > 0 ? 'بدهکار' : info.balance < 0 ? 'بستانکار' : 'تسویه'})</span>
-                       </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
 
             {/* نوار انتخاب روز (صفحات دفتر) */}
@@ -280,7 +289,8 @@ export default function CustomerManager({
                   </div>
                   <button onClick={() => changeLedgerDay(-1)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><ChevronLeft size={20}/></button>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 text-xs font-black">
+                  {auditMode && <span className="text-amber-400 animate-pulse">در حال مشاهده تمام تاریخچه قبل از تصفیه...</span>}
                   <button onClick={() => setActiveLedgerDate(new Date().toISOString().split('T')[0])} className="text-[10px] font-bold bg-blue-600 px-4 py-2 rounded-xl">امروز (صفحه جاری)</button>
                   <div className="h-6 w-px bg-white/10"></div>
                   <BookOpen size={20} className="text-slate-500" />
@@ -292,7 +302,9 @@ export default function CustomerManager({
                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
                   <div className="flex items-center gap-3">
                      <History size={20} className="text-blue-600" />
-                     <h4 className="text-lg font-black text-slate-900">صفحه روزانه دفتر</h4>
+                     <h4 className="text-lg font-black text-slate-900">
+                        {auditMode ? 'بازبینی کامل دفترچه (Audit Mode)' : 'صفحه روزانه دفتر'}
+                     </h4>
                   </div>
                   <div className="flex gap-3">
                     {SUPPORTED_CURRENCIES.map(curr => {
@@ -320,9 +332,12 @@ export default function CustomerManager({
                         </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-50">
-                        {/* سطر مانده از قبل (Opening Balance) */}
-                        <tr className="bg-blue-50/30">
-                          <td colSpan={2} className="py-6 px-8 text-xs font-black text-blue-800 italic">مانده منتقل شده از صفحات قبل (Opening Balance)</td>
+                        {/* سطر مانده از قبل / نقطه تصفیه */}
+                        <tr className={ledgerPageData.isPostLock ? "bg-blue-50/50" : "bg-blue-50/30"}>
+                          <td colSpan={2} className="py-6 px-8 text-xs font-black text-blue-800 italic flex items-center gap-2">
+                             {ledgerPageData.isPostLock ? <ShieldCheck size={14} /> : <RotateCcw size={14} />}
+                             {ledgerPageData.isPostLock ? "مانده از لحظه تصفیه قطعی حساب (Settled Balance)" : auditMode ? "مانده قبل از این صفحه (Full History View)" : "مانده منتقل شده از صفحات قبل (Opening Balance)"}
+                          </td>
                           <td colSpan={2}></td>
                           <td className="py-6 px-8 text-left">
                             <div className="flex flex-col items-end gap-1">
@@ -340,7 +355,7 @@ export default function CustomerManager({
                           </td>
                         </tr>
 
-                        {/* لیست تراکنش‌های روز انتخابی */}
+                        {/* لیست تراکنش‌ها */}
                         {ledgerPageData.currentTransactions.map(t => (
                            <tr key={t.id} className="hover:bg-slate-50/50 transition-all group">
                               <td className="py-6 px-8 text-[11px] font-bold text-slate-400 tabular-nums">
@@ -393,7 +408,7 @@ export default function CustomerManager({
                            </tr>
                         )}
 
-                        {/* سطر مانده نهایی (Closing Balance) */}
+                        {/* سطر مانده نهایی */}
                         <tr className="bg-slate-900 text-white">
                           <td colSpan={2} className="py-8 px-8 text-sm font-black">قید مانده نهایی و انتقال به صفحه بعد (Closing Balance)</td>
                           <td colSpan={2}></td>
