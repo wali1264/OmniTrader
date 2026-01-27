@@ -62,10 +62,11 @@ const Dashboard: React.FC<DashboardProps> = ({ stats, transactions, globalRates,
       </div>
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-        <StatCard title="صندوق افغانی" value={(stats.cashBox['AFN'] || 0).toLocaleString()} unit="AFN" icon={<Coins size={14} className="text-slate-400" />} />
+        <StatCard title="صندوق افغانی" value={(stats.cashBox['AFN'] || 0).toLocaleString()} unit="AFN" icon={<Coins size={14} className="text-emerald-500" />} />
+        <StatCard title="صندوق دالر" value={(stats.cashBox['USD'] || 0).toLocaleString()} unit="USD" icon={<DollarSign size={14} className="text-blue-500" />} />
+        <StatCard title="صندوق کلدار" value={(stats.cashBox['PKR'] || 0).toLocaleString()} unit="PKR" icon={<Coins size={14} className="text-rose-500" />} />
         <StatCard title="مفاد نقدی" value={stats.totalCashProfit.toLocaleString()} unit="AFN" icon={<TrendingUp size={14} className="text-emerald-500" />} />
-        <StatCard title="تومان نقدی" value={(stats.cashBox['IRT_CASH'] || 0).toLocaleString()} unit="IRT" icon={<Coins size={14} className="text-slate-400" />} />
-        <StatCard title="مفاد بانکی" value={stats.totalBankProfit.toLocaleString()} unit="IRT" icon={<CreditCard size={14} className="text-amber-500" />} />
+        <StatCard title="تومان نقدی" value={(stats.cashBox['IRT_CASH'] || 0).toLocaleString()} unit="IRT" icon={<CreditCard size={14} className="text-amber-500" />} />
         <StatCard title="سرمایه خالص کل" value={(stats.totalCashProfit + stats.totalBankProfit * 0.01).toLocaleString()} unit="AFN" icon={<Sparkles size={14} className="text-white" />} highlight />
       </section>
 

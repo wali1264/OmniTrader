@@ -3,7 +3,7 @@ import {
   Landmark, Plus, Search, X, CreditCard, ArrowLeft, 
   ChevronRight, List, CheckCircle, Clock, ArrowRightLeft, 
   Save, Percent, Trash2, AlertCircle, ShieldQuestion, Wallet,
-  ArrowDown, ArrowUp, FileText, HelpCircle, Check, User
+  ArrowDown, ArrowUp, FileText, HelpCircle, Check, User, UserCheck
 } from 'lucide-react';
 import { BankAccount, Transaction, TransactionType, TransactionStatus, Customer, SUPPORTED_CURRENCIES } from './types';
 
@@ -26,6 +26,8 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
   const [activeMode, setActiveMode] = useState<TransactionType>(TransactionType.RESID);
   const [searchCustomer, setSearchCustomer] = useState('');
   const [searchPending, setSearchPending] = useState('');
+  const [assigningTransaction, setAssigningTransaction] = useState<Transaction | null>(null);
+  const [customerSearchForAssign, setCustomerSearchForAssign] = useState('');
   
   const [newBank, setNewBank] = useState({ name: '', number: '', balance: 0, currency: 'IRT_BANK' });
   const [transferData, setTransferData] = useState({ 
@@ -66,10 +68,16 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
     return customers.filter(c => c.name.includes(term) || c.code.includes(term));
   }, [customers, searchCustomer]);
 
+  const customersForAssign = useMemo(() => {
+    const term = customerSearchForAssign.trim();
+    if (!term) return customers.slice(0, 10);
+    return customers.filter(c => c.name.includes(term) || c.code.includes(term));
+  }, [customers, customerSearchForAssign]);
+
   const bankHistory = useMemo(() => {
     if (!activeBank) return [];
     return transactions
-      .filter(t => t.bankAccountId === activeBank.id && t.isBank)
+      .filter(t => t.bankAccountId === activeBank.id && t.isBank && t.customerId) // فقط تراکنش‌های هویت‌دار در تاریخچه
       .sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, activeBank]);
 
@@ -80,7 +88,7 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       !t.customerId && 
       t.status === TransactionStatus.PENDING &&
       (t.description.includes(searchPending) || t.amount.toString().includes(searchPending) || t.trackingId?.includes(searchPending))
-    );
+    ).sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, activeBank, searchPending]);
 
   const handleAddBank = () => {
@@ -102,15 +110,12 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       alert("لطفاً بانک مبدأ و مبلغ را وارد کنید.");
       return;
     }
-
     const sourceBank = bankAccounts.find(b => b.id === transferData.sourceBankId);
     if (!sourceBank) return;
-
     const now = getSystemNow();
     const commissionValue = (transferData.amount * (transferData.commissionPercent || 0)) / 100;
     const netAmount = transferData.amount - commissionValue;
 
-    // اگر بانک مقصد انتخاب شده باشد (انتقال داخلی)
     if (transferData.targetBankId) {
       if (transferData.sourceBankId === transferData.targetBankId) {
         alert("بانک مبدأ و مقصد نمی‌توانند یکی باشند.");
@@ -118,7 +123,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       }
       const targetBank = bankAccounts.find(b => b.id === transferData.targetBankId);
       if (!targetBank) return;
-
       const outTrans: Transaction = {
         id: `TX-TR-OUT-${now}`,
         type: TransactionType.BOARD,
@@ -131,7 +135,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
         timestamp: now,
         status: TransactionStatus.APPROVED
       };
-
       const inTrans: Transaction = {
         id: `TX-TR-IN-${now}`,
         type: TransactionType.RESID,
@@ -143,11 +146,8 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
         timestamp: now + 1,
         status: TransactionStatus.APPROVED
       };
-
       setTransactions(prev => [...prev, outTrans, inTrans]);
-    } 
-    // اگر مقصد دستی وارد شده باشد (انتقال به همکار یا مشتری)
-    else {
+    } else {
       const destinationLabel = transferData.manualTargetName || "حساب خارجی/همکار";
       const outTrans: Transaction = {
         id: `TX-EXT-OUT-${now}`,
@@ -161,10 +161,8 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
         timestamp: now,
         status: TransactionStatus.APPROVED
       };
-
       setTransactions(prev => [...prev, outTrans]);
     }
-
     setShowTransferModal(false);
     setTransferData({ sourceBankId: '', targetBankId: '', manualTargetName: '', amount: 0, commissionPercent: 0, description: '' });
     alert("عملیات انتقال با موفقیت انجام شد.");
@@ -173,10 +171,8 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
   const handleSubmitTransaction = (e: React.FormEvent, isAnonymous: boolean = false) => {
     if (e) e.preventDefault();
     if (!activeBank || formData.amount <= 0) return;
-    
     const commissionAmount = (formData.amount * (formData.commissionPercent || 0)) / 100;
     const finalAmount = activeMode === TransactionType.RESID ? (formData.amount - commissionAmount) : formData.amount;
-
     const transaction: Transaction = {
       id: 'BT-' + Math.random().toString(36).substr(2, 5).toUpperCase(),
       customerId: isAnonymous ? undefined : formData.customerId,
@@ -189,15 +185,26 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
       bankFrom: formData.bankFrom,
       cardLastFour: formData.cardLastFour,
       trackingId: formData.trackingId,
-      description: formData.description,
+      description: formData.description || (isAnonymous ? "واریزی مجهول" : "واریزی بانکی"),
       timestamp: getSystemNow(),
       status: TransactionStatus.PENDING
     };
-
     setTransactions(prev => [...prev, transaction]);
     setFormData({ amount: 0, customerId: '', bankFrom: '', cardLastFour: '', trackingId: '', commissionPercent: 0, description: '' });
     setSearchCustomer('');
     alert(isAnonymous ? "در لیست مجهولین ثبت شد." : "تراکنش قطعی با موفقیت ثبت شد.");
+  };
+
+  const handleAssignToCustomer = (customer: Customer) => {
+    if (!assigningTransaction) return;
+    setTransactions(prev => prev.map(t => 
+      t.id === assigningTransaction.id 
+        ? { ...t, customerId: customer.id, description: `[تخصیص از مجهول] ${t.description}` } 
+        : t
+    ));
+    setAssigningTransaction(null);
+    setCustomerSearchForAssign('');
+    alert(`تراکنش با موفقیت به ${customer.name} اختصاص یافت و جهت تائید به مدیریت ارسال شد.`);
   };
 
   if (!activeBank) {
@@ -260,8 +267,8 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
         )}
 
         {showTransferModal && (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[60] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in text-right font-['Vazirmatn'] border border-slate-100 overflow-y-auto max-h-[90vh] custom-scrollbar">
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-[60] flex items-center justify-center p-4 text-right">
+            <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-lg shadow-2xl animate-in zoom-in font-['Vazirmatn'] border border-slate-100 overflow-y-auto max-h-[90vh] custom-scrollbar">
               <div className="flex justify-between items-center mb-10 relative">
                  <button onClick={() => setShowTransferModal(false)} className="p-2 text-slate-300 hover:text-rose-500 transition-all absolute -left-2 top-0">
                     <X size={20}/>
@@ -273,97 +280,45 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                     </div>
                  </div>
               </div>
-              
               <div className="space-y-6">
                 <div className="space-y-2">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mr-1">حساب مبدأ (فرستنده)</label>
-                    <select 
-                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-right text-sm" 
-                      value={transferData.sourceBankId} 
-                      onChange={e => setTransferData({...transferData, sourceBankId: e.target.value})}
-                    >
+                    <select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-right text-sm" value={transferData.sourceBankId} onChange={e => setTransferData({...transferData, sourceBankId: e.target.value})}>
                        <option value="">-- انتخاب بانک مبدأ --</option>
                        {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.bankName} - {b.accountNumber} ({b.currency})</option>)}
                     </select>
                 </div>
-
                 <div className="space-y-4 pt-2 border-t border-slate-50">
                     <p className="text-[10px] font-black text-slate-300 text-center uppercase tracking-[0.2em]">انتخاب مقصد تراکنش</p>
-                    
                     <div className="space-y-2">
                         <label className="text-[10px] font-bold text-blue-500 uppercase tracking-tight mr-1">حساب مقصد داخلی (اختیاری)</label>
-                        <select 
-                          className="w-full p-4 bg-blue-50/20 border border-blue-100 rounded-2xl font-bold outline-none text-right text-sm" 
-                          value={transferData.targetBankId} 
-                          onChange={e => setTransferData({...transferData, targetBankId: e.target.value, manualTargetName: e.target.value ? '' : transferData.manualTargetName})}
-                        >
+                        <select className="w-full p-4 bg-blue-50/20 border border-blue-100 rounded-2xl font-bold outline-none text-right text-sm" value={transferData.targetBankId} onChange={e => setTransferData({...transferData, targetBankId: e.target.value, manualTargetName: e.target.value ? '' : transferData.manualTargetName})}>
                            <option value="">-- عدم انتخاب (انتقال به خارج از سیستم) --</option>
                            {bankAccounts.filter(b => b.id !== transferData.sourceBankId).map(b => <option key={b.id} value={b.id}>{b.bankName} ({b.currency})</option>)}
                         </select>
                     </div>
-
-                    <div className="relative flex items-center justify-center">
-                        <span className="bg-white px-3 text-[10px] font-black text-slate-300 z-10">یا</span>
-                        <div className="absolute w-full h-px bg-slate-100"></div>
-                    </div>
-
+                    <div className="relative flex items-center justify-center"><span className="bg-white px-3 text-[10px] font-black text-slate-300 z-10">یا</span><div className="absolute w-full h-px bg-slate-100"></div></div>
                     <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-amber-600 uppercase tracking-tight mr-1 flex items-center gap-1">
-                          <User size={12} /> نام همکار یا حساب مقصد مشتری (دستی)
-                        </label>
-                        <input 
-                          type="text" 
-                          placeholder="مثلاً: صرافی احمدی / علی محمدی" 
-                          disabled={!!transferData.targetBankId}
-                          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-right text-sm disabled:opacity-30" 
-                          value={transferData.manualTargetName} 
-                          onChange={e => setTransferData({...transferData, manualTargetName: e.target.value})} 
-                        />
-                        {transferData.targetBankId && <p className="text-[8px] text-blue-400 font-bold">بانک داخلی انتخاب شده است.</p>}
+                        <label className="text-[10px] font-bold text-amber-600 uppercase tracking-tight mr-1 flex items-center gap-1"><User size={12} /> نام همکار یا حساب مقصد مشتری (دستی)</label>
+                        <input type="text" placeholder="مثلاً: صرافی احمدی / علی محمدی" disabled={!!transferData.targetBankId} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold outline-none text-right text-sm disabled:opacity-30" value={transferData.manualTargetName} onChange={e => setTransferData({...transferData, manualTargetName: e.target.value})} />
                     </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                    <div className="space-y-2 text-right">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mr-1">مبلغ انتقال</label>
-                      <input 
-                        type="number" 
-                        placeholder="0" 
-                        className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-center text-lg outline-none tabular-nums" 
-                        value={transferData.amount || ''} 
-                        onChange={e => setTransferData({...transferData, amount: Number(e.target.value)})} 
-                      />
+                      <input type="number" placeholder="0" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-center text-lg outline-none tabular-nums" value={transferData.amount || ''} onChange={e => setTransferData({...transferData, amount: Number(e.target.value)})} />
                    </div>
                    <div className="space-y-2 text-right">
                       <label className="text-[10px] font-bold text-blue-500 uppercase tracking-tight mr-1">% فیصدی کمیشن</label>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        placeholder="0.00" 
-                        className="w-full p-4 bg-blue-50/30 border border-blue-100 rounded-2xl font-black text-center text-lg outline-none tabular-nums text-blue-600" 
-                        value={transferData.commissionPercent || ''} 
-                        onChange={e => setTransferData({...transferData, commissionPercent: Number(e.target.value)})} 
-                      />
+                      <input type="number" step="0.01" placeholder="0.00" className="w-full p-4 bg-blue-50/30 border border-blue-100 rounded-2xl font-black text-center text-lg outline-none tabular-nums text-blue-600" value={transferData.commissionPercent || ''} onChange={e => setTransferData({...transferData, commissionPercent: Number(e.target.value)})} />
                    </div>
                 </div>
-
                 <div className="space-y-2">
                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-tight mr-1">شرح انتقال (بابت...)</label>
-                   <textarea 
-                     placeholder="مثلاً: بابت جابجایی نقدینگی یا تسویه حساب" 
-                     className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none text-right text-xs min-h-[90px] leading-relaxed" 
-                     value={transferData.description} 
-                     onChange={e => setTransferData({...transferData, description: e.target.value})} 
-                   />
+                   <textarea placeholder="مثلاً: بابت جابجایی نقدینگی یا تسویه حساب" className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl font-medium outline-none text-right text-xs min-h-[90px] leading-relaxed" value={transferData.description} onChange={e => setTransferData({...transferData, description: e.target.value})} />
                 </div>
-
                 <div className="pt-4">
-                   <button 
-                     onClick={handleInternalTransfer} 
-                     className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3"
-                   >
-                      <Save size={18} /> تائید و ثبت نهایی انتقال
-                   </button>
+                   <button onClick={handleInternalTransfer} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-black transition-all flex items-center justify-center gap-3"><Save size={18} /> تائید و ثبت نهایی انتقال</button>
                 </div>
               </div>
             </div>
@@ -375,7 +330,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in slide-in-from-left duration-500 pb-20 font-['Vazirmatn']" dir="rtl">
-      {/* Header Cards */}
       <div className="flex flex-wrap items-center gap-4 justify-end">
          <div className="bg-white px-6 py-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-4">
             <div className="p-3 bg-blue-600 text-white rounded-xl shadow-lg"><Landmark size={24} /></div>
@@ -409,14 +363,12 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
          </button>
       </div>
 
-      {/* Main Tabs */}
       <div className="flex bg-slate-200/50 p-1.5 rounded-2xl w-fit mr-auto ml-auto md:mr-0">
          <button onClick={() => setActiveTab('ops')} className={`px-10 py-3 rounded-xl font-black text-xs transition-all ${activeTab === 'ops' ? 'bg-white text-slate-600 shadow-sm' : 'text-slate-500'}`}>ثبت تراکنش قطعی</button>
-         <button onClick={() => setActiveTab('pending')} className={`px-10 py-3 rounded-xl font-black text-xs transition-all ${activeTab === 'pending' ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-500'}`}>واریزی‌های مجهول (در انتظار)</button>
+         <button onClick={() => setActiveTab('pending')} className={`px-10 py-3 rounded-xl font-black text-xs transition-all ${activeTab === 'pending' ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-500'}`}>واریزی‌های مجهول ({pendingCount})</button>
       </div>
 
       <div className="grid grid-cols-1 gap-8">
-        {/* Form Section */}
         {activeTab === 'ops' && (
           <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 space-y-10">
              <div className="flex flex-col md:flex-row justify-between items-center border-b border-slate-50 pb-8 gap-4">
@@ -426,7 +378,6 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                    <button onClick={() => setActiveMode(TransactionType.BOARD)} className={`px-8 py-2 rounded-lg font-black text-xs transition-all ${activeMode === TransactionType.BOARD ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>برد</button>
                 </div>
              </div>
-
              <form className="grid grid-cols-1 md:grid-cols-2 gap-8 text-right">
                 <div className="space-y-2 relative">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۱. مشتری</label>
@@ -442,39 +393,30 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                      </div>
                    )}
                 </div>
-
                 <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۲. مبلغ ({activeBank.currency})</label>
-                   <div className="relative">
-                      <input type="number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-xl outline-none text-right pr-4" placeholder="قلم خرد برای مبالغ بالا" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} />
-                   </div>
+                   <input type="number" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-xl outline-none text-right" placeholder="0" value={formData.amount || ''} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} />
                 </div>
-
                 <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۳. بانک ارسال کننده</label>
                    <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none text-right" placeholder="نام بانک مبدأ" value={formData.bankFrom} onChange={e => setFormData({...formData, bankFrom: e.target.value})} />
                 </div>
-
                 <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1 flex items-center gap-1"><CreditCard size={12}/> ۴. ۴ رقم کارت</label>
                    <input type="text" maxLength={4} className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black text-center text-lg outline-none tabular-nums" placeholder="0000" value={formData.cardLastFour} onChange={e => setFormData({...formData, cardLastFour: e.target.value.replace(/\D/g, '')})} />
                 </div>
-
                 <div className="space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۵. شماره پیگیری / رفرنس</label>
                    <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none text-right" placeholder="Tracking ID" value={formData.trackingId} onChange={e => setFormData({...formData, trackingId: e.target.value})} />
                 </div>
-
                 <div className="space-y-2">
-                   <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest mr-1">۶. فیصدی کمیشن (کسر از مبلغ)</label>
+                   <label className="text-[10px] font-black text-rose-50 uppercase tracking-widest mr-1">۶. فیصدی کمیشن (کسر از مبلغ)</label>
                    <input type="number" step="0.01" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-black outline-none text-right" placeholder="0.00" value={formData.commissionPercent || ''} onChange={e => setFormData({...formData, commissionPercent: Number(e.target.value)})} />
                 </div>
-
                 <div className="md:col-span-2 space-y-2">
                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">۷. توضیحات تکمیلی</label>
                    <textarea className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl font-bold min-h-[100px] outline-none text-right" placeholder="توضیحات..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
                 </div>
-
                 <div className="md:col-span-2 flex flex-col md:flex-row gap-4 pt-6">
                    <button type="button" onClick={(e) => handleSubmitTransaction(e, false)} className="flex-[2] bg-emerald-600 text-white py-5 rounded-2xl font-black text-xl shadow-xl hover:bg-emerald-700 transition-all">تأیید و ثبت نهایی</button>
                    <button type="button" onClick={(e) => handleSubmitTransaction(e, true)} className="flex-1 bg-amber-500 text-white py-5 rounded-2xl font-black text-sm shadow-lg hover:bg-amber-600 transition-all">ثبت در مجهولین</button>
@@ -483,60 +425,61 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
           </div>
         )}
 
-        {/* Pending Deposits Section */}
         {activeTab === 'pending' && (
-          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 space-y-10 min-h-[400px] flex flex-col">
+          <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100 space-y-10 min-h-[600px] flex flex-col">
              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="relative w-full md:w-64">
+                <div className="relative w-full md:w-80">
                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                   <input 
-                     type="text" 
-                     placeholder="جستجو در مجهولین..." 
-                     className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2 px-10 text-xs font-bold outline-none text-right"
-                     value={searchPending}
-                     onChange={e => setSearchPending(e.target.value)}
-                   />
+                   <input type="text" placeholder="جستجو در مجهولین (مبلغ، رفرنس، شرح)..." className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pr-10 pl-4 text-xs font-bold outline-none text-right" value={searchPending} onChange={e => setSearchPending(e.target.value)} />
                 </div>
-                <div className="flex items-center gap-2">
-                   <h3 className="text-xl font-black text-slate-900">واریزی‌های مجهول</h3>
+                <div className="flex items-center gap-3">
+                   <h3 className="text-xl font-black text-slate-900">لیست واریزی‌های مجهول ({pendingTransactions.length})</h3>
                    <HelpCircle className="text-amber-500" size={20} />
                 </div>
              </div>
-
-             <div className="flex-1 flex flex-col items-center justify-center py-20 text-center">
-                {pendingTransactions.length === 0 ? (
-                  <div className="space-y-4 animate-in fade-in zoom-in duration-500">
-                     <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto border border-emerald-100">
-                        <Check className="text-emerald-500" size={40} />
+             <div className="space-y-4">
+                {pendingTransactions.map(t => (
+                  <div key={t.id} className="p-8 bg-slate-50 border border-amber-100 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-center gap-6 group hover:bg-white hover:shadow-xl transition-all border-r-4 border-r-amber-500">
+                     <div className="flex items-center gap-6 text-right">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-black shadow-inner">
+                           <ShieldQuestion size={28} />
+                        </div>
+                        <div className="text-right">
+                           <p className="font-black text-slate-900 text-base">{t.amount.toLocaleString()} <span className="text-[10px] uppercase text-slate-400">{t.currency}</span></p>
+                           <div className="flex items-center gap-3 mt-1 text-slate-400 font-bold text-[10px]">
+                              <span>{new Date(t.timestamp).toLocaleString('fa-IR')}</span>
+                              {t.trackingId && <span className="bg-slate-100 px-2 py-0.5 rounded uppercase">Ref: {t.trackingId}</span>}
+                           </div>
+                           <p className="text-[11px] font-bold text-slate-500 mt-2 italic">"{t.description}"</p>
+                        </div>
                      </div>
-                     <p className="text-slate-400 font-bold text-sm">تمام واریزی‌ها تعیین تکلیف شده‌اند.</p>
+                     <button onClick={() => setAssigningTransaction(t)} className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-900/10">
+                        <UserCheck size={16} /> تخصیص به مشتری
+                     </button>
                   </div>
-                ) : (
-                  <div className="w-full space-y-4">
-                     {/* اگر واریزی وجود داشت در اینجا نمایش داده می‌شود */}
-                     <p className="text-xs text-slate-400 italic">نمایش لیست واریزی‌های مجهول...</p>
+                ))}
+                {pendingTransactions.length === 0 && (
+                  <div className="py-32 flex flex-col items-center justify-center text-slate-300 gap-4">
+                     <CheckCircle size={64} className="opacity-10 text-emerald-500" />
+                     <p className="font-black italic">تمام واریزی‌های این بانک تعیین تکلیف شده‌اند.</p>
                   </div>
                 )}
              </div>
           </div>
         )}
 
-        {/* History Section */}
         <div className="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
-           <div className="flex justify-between items-center mb-8 relative">
-              <div className="flex items-center gap-3">
-                 <div className="p-2 bg-slate-50 text-slate-400 rounded-lg"><List size={18} /></div>
-                 <h3 className="text-xl font-black text-slate-900">تاریخچه تراکنش‌های بانک</h3>
-              </div>
+           <div className="flex items-center gap-3 mb-8 border-b border-slate-50 pb-4">
+              <div className="p-2 bg-slate-50 text-slate-400 rounded-lg"><List size={18} /></div>
+              <h3 className="text-xl font-black text-slate-900">تاریخچه اسناد هویت‌دار</h3>
            </div>
-
            <div className="overflow-x-auto">
               <table className="w-full text-right text-xs">
                  <thead>
-                    <tr className="text-slate-400 border-b border-slate-50">
-                       <th className="py-4 px-2 font-black text-right">طرف حساب</th>
+                    <tr className="text-slate-400 border-b border-slate-50 uppercase text-[10px]">
+                       <th className="py-4 px-2 font-black">مشتری</th>
                        <th className="py-4 px-2 font-black text-center">مبلغ</th>
-                       <th className="py-4 px-2 font-black text-left pr-4">وضعیت</th>
+                       <th className="py-4 px-2 font-black text-left">وضعیت</th>
                     </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-50">
@@ -545,36 +488,71 @@ const BankManager: React.FC<BankManagerProps> = ({ bankAccounts, setBankAccounts
                       return (
                         <tr key={t.id} className="group hover:bg-slate-50/50 transition-all">
                            <td className="py-6 px-2">
-                              <p className="font-black text-slate-800 text-sm">{customer?.name || 'مجهول / نامشخص'}</p>
-                              <p className="text-[9px] text-slate-400 font-mono mt-1">{customer?.code || t.id.split('-')[1]}</p>
+                              <p className="font-black text-slate-800 text-sm">{customer?.name || 'نامشخص'}</p>
+                              <p className="text-[9px] text-slate-400 font-mono mt-1">{new Date(t.timestamp).toLocaleTimeString('fa-IR')}</p>
                            </td>
-                           <td className="py-6 px-2 text-center">
-                              <p className={`font-black text-sm tabular-nums ${t.type === TransactionType.RESID ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                 {t.amount.toLocaleString()}<span className="text-[9px] uppercase mr-1">{t.currency}</span>{t.type === TransactionType.RESID ? ' +' : ' -'}
-                              </p>
+                           <td className="py-6 px-2 text-center font-black tabular-nums">
+                              <span className={t.type === TransactionType.RESID ? 'text-emerald-600' : 'text-rose-600'}>
+                                 {t.amount.toLocaleString()} {t.currency} {t.type === TransactionType.RESID ? '+' : '-'}
+                              </span>
                            </td>
-                           <td className="py-6 px-2 text-left pr-4">
+                           <td className="py-6 px-2 text-left">
                               <span className={`px-4 py-1.5 rounded-xl font-black text-[10px] ${
                                 t.status === TransactionStatus.APPROVED ? 'bg-emerald-50 text-emerald-600' : 
                                 t.status === TransactionStatus.PENDING ? 'bg-amber-100 text-amber-700' : 'bg-rose-50 text-rose-600'
-                              }`}>
-                                 {t.status === TransactionStatus.APPROVED ? 'تأیید شده' : 
-                                  t.status === TransactionStatus.PENDING ? 'انتظار' : 'رد شده'}
-                              </span>
+                              }`}>{t.status === TransactionStatus.APPROVED ? 'تأیید' : t.status === TransactionStatus.PENDING ? 'انتظار' : 'رد'}</span>
                            </td>
                         </tr>
                       );
                     })}
                     {bankHistory.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="py-20 text-center text-slate-300 italic font-bold">هیچ تراکنشی یافت نشد.</td>
-                      </tr>
+                      <tr><td colSpan={3} className="py-20 text-center text-slate-300 italic font-bold">تراکنشی یافت نشد.</td></tr>
                     )}
                  </tbody>
               </table>
            </div>
         </div>
       </div>
+
+      {assigningTransaction && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-xl z-[100] flex items-center justify-center p-4 text-right">
+          <div className="bg-white rounded-[3.5rem] p-12 w-full max-w-2xl h-[85vh] flex flex-col animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center mb-8 border-b border-slate-50 pb-6">
+              <div className="flex items-center gap-4">
+                 <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg"><UserCheck size={24} /></div>
+                 <div>
+                    <h3 className="text-2xl font-black text-slate-900">تخصیص صاحب واریزی</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Select Customer for Amount: {assigningTransaction.amount.toLocaleString()} {assigningTransaction.currency}</p>
+                 </div>
+              </div>
+              <button onClick={() => setAssigningTransaction(null)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-500 rounded-full transition-all"><X size={24} /></button>
+            </div>
+            <div className="relative mb-6">
+              <Search className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
+              <input type="text" placeholder="جستجوی سریع نام یا کد مشتری..." className="w-full bg-slate-50 border border-slate-100 p-5 pr-14 rounded-2xl font-black text-right outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 transition-all" value={customerSearchForAssign} onChange={e => setCustomerSearchForAssign(e.target.value)} />
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+              {customersForAssign.map(c => (
+                <button key={c.id} onClick={() => handleAssignToCustomer(c)} className="w-full p-6 bg-slate-50 border border-slate-100 rounded-2xl flex justify-between items-center hover:bg-blue-600 hover:text-white hover:shadow-xl transition-all group">
+                   <div className="text-right">
+                      <p className="font-black text-base group-hover:text-white">{c.name}</p>
+                      <p className="text-[10px] font-bold text-slate-400 group-hover:text-white/60 uppercase mt-0.5">Customer Code: {c.code}</p>
+                   </div>
+                   <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                      <Check size={20} className="text-white" />
+                   </div>
+                </button>
+              ))}
+              {customersForAssign.length === 0 && (
+                <div className="py-20 text-center text-slate-300 font-bold italic">مشتری با این مشخصات یافت نشد.</div>
+              )}
+            </div>
+            <div className="pt-8 border-t border-slate-50 text-center">
+              <button onClick={() => setAssigningTransaction(null)} className="text-sm font-black text-slate-400 hover:text-slate-600">انصراف و بازگشت</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

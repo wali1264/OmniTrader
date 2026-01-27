@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { 
   Briefcase, ArrowDownLeft, ArrowUpRight, 
-  Search, CheckCircle, Wallet, Printer as PrintIcon, TrendingUp, Share2
+  Search, CheckCircle, Wallet, Printer as PrintIcon, TrendingUp, Share2, AlignRight
 } from 'lucide-react';
 import { Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, User as SystemUser, Customer } from '../types';
 
@@ -31,7 +32,6 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
     ).sort((a, b) => b.timestamp - a.timestamp);
   }, [transactions, searchTerm, customers]);
 
-  // اصلاح: محاسبه مفاد نقدی شامل معاملات تبادله و همچنین تصفیه سود راه‌روی
   const cashProfit = useMemo(() => {
     return cashMovements
       .filter(t => t.type === TransactionType.EXCHANGE || (t.isWalkin && t.netProfit !== undefined))
@@ -130,7 +130,7 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                 </div>
              </div>
 
-             <div className="space-y-3">
+             <div className="space-y-4">
                 {cashMovements.map(t => {
                    const customer = customers.find(c => c.id === t.customerId);
                    const displayName = customer?.name || t.guestName || 'تراکنش نقدی آزاد';
@@ -138,36 +138,43 @@ const CashBoxManager: React.FC<CashBoxManagerProps> = ({ transactions, stats, cu
                      <button 
                        key={t.id} 
                        onClick={() => setSelectedReceipt(t)}
-                       className={`w-full p-6 rounded-[2rem] border transition-all flex items-center justify-between group ${selectedReceipt?.id === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl' : 'bg-white border-slate-50 hover:bg-slate-50 text-slate-900'}`}
+                       className={`w-full p-6 rounded-[2.5rem] border transition-all flex items-center justify-between group ${selectedReceipt?.id === t.id ? 'bg-blue-600 border-blue-600 text-white shadow-xl scale-[1.01]' : 'bg-white border-slate-100 hover:border-blue-200 hover:bg-slate-50 text-slate-900'}`}
                      >
-                        <div className="flex items-center gap-6">
-                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black ${selectedReceipt?.id === t.id ? 'bg-white/20' : t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>
-                              {t.type === TransactionType.RESID ? <ArrowDownLeft size={20} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={20} /> : <CheckCircle size={20} />}
+                        <div className="flex items-center gap-6 w-full">
+                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black shrink-0 ${selectedReceipt?.id === t.id ? 'bg-white/20' : t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-amber-50 text-amber-600'}`}>
+                              {t.type === TransactionType.RESID ? <ArrowDownLeft size={24} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={24} /> : <CheckCircle size={24} />}
                            </div>
-                           <div className="text-right">
-                              <p className="font-black text-sm">{displayName}</p>
-                              <div className="flex flex-col gap-1 mt-0.5">
-                                 <div className="flex items-center gap-2">
-                                    <p className="text-[9px] opacity-60 font-bold tnum">
-                                       {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
-                                    </p>
-                                    {(t.type === TransactionType.EXCHANGE || t.isWalkin) && (
-                                       <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>
-                                          {t.isWalkin ? 'تصفیه راه‌روی' : 'تبادله نقد'}
-                                       </span>
+                           <div className="text-right flex-1">
+                              <div className="flex justify-between items-start">
+                                 <div>
+                                    <p className="font-black text-sm">{displayName}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                       <p className={`text-[10px] font-bold tnum ${selectedReceipt?.id === t.id ? 'text-white/60' : 'text-slate-400'}`}>
+                                          {new Date(t.timestamp).toLocaleTimeString('fa-IR', {hour: '2-digit', minute: '2-digit'})}
+                                       </p>
+                                       {(t.type === TransactionType.EXCHANGE || t.isWalkin) && (
+                                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${selectedReceipt?.id === t.id ? 'bg-white/20' : 'bg-amber-100 text-amber-700'}`}>
+                                             {t.isWalkin ? 'تصفیه بازار' : 'تبادله نقد'}
+                                          </span>
+                                       )}
+                                    </div>
+                                 </div>
+                                 <div className="text-left flex flex-col items-end shrink-0">
+                                    <p className="text-base font-black tnum">{t.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-60">{t.currency}</span></p>
+                                    {t.netProfit !== undefined && (
+                                      <p className={`text-[10px] font-black ${selectedReceipt?.id === t.id ? 'text-blue-100' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN</p>
                                     )}
                                  </div>
-                                 <p className={`text-[10px] font-bold leading-tight text-right ${selectedReceipt?.id === t.id ? 'text-white/90' : 'text-slate-600'}`}>
-                                    <span className="opacity-50">شرح معامله: </span>{t.description || 'ثبت نقدینگی مشتری'}
+                              </div>
+                              
+                              {/* بخش نمایش توضیحات تقویت شده */}
+                              <div className={`mt-3 p-3 rounded-xl flex items-start gap-2 border ${selectedReceipt?.id === t.id ? 'bg-white/10 border-white/10 text-white' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                                 <AlignRight size={14} className="shrink-0 mt-0.5 opacity-60" />
+                                 <p className="text-[11px] font-bold leading-relaxed text-right flex-1 italic">
+                                    {t.description || 'ثبت نقدینگی در صندوق'}
                                  </p>
                               </div>
                            </div>
-                        </div>
-                        <div className="text-left flex flex-col items-end shrink-0 ml-4">
-                           <p className="text-sm font-black tnum">{t.amount.toLocaleString()} <span className="text-[10px] uppercase opacity-60">{t.currency}</span></p>
-                           {t.netProfit !== undefined && (
-                             <p className={`text-[9px] font-bold ${selectedReceipt?.id === t.id ? 'text-white' : 'text-emerald-600'}`}>+ {t.netProfit.toLocaleString()} AFN</p>
-                           )}
                         </div>
                      </button>
                    );

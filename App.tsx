@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, Users, BookOpen, CheckCircle, LogOut, Wallet, 
@@ -133,7 +132,10 @@ const App: React.FC = () => {
               {appStatus === 'LOCKED' ? <ShieldAlert size={32} /> : <ShieldCheck size={32} />}
             </div>
           </div>
-          <h1 className="text-xl font-black text-white text-center mb-8 tracking-tight">پنل مدیریت صرافی</h1>
+          <div className="text-center mb-8">
+            <p className="text-[14px] font-black text-blue-400 uppercase tracking-widest mb-1">معراج</p>
+            <h1 className="text-xl font-black text-white tracking-tight">پنل مدیریت صرافی</h1>
+          </div>
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-1.5 text-right">
               <label className="text-[10px] font-bold text-slate-500 mr-2 uppercase tracking-widest">شناسه کاربری</label>

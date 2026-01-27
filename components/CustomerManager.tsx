@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Customer, Transaction, TransactionType, TransactionStatus, SUPPORTED_CURRENCIES, GlobalRate } from '../types';
 
@@ -74,7 +73,8 @@ export default function CustomerManager({
   const [newCustomer, setNewCustomer] = useState({ name: '', code: '', phone: '' });
 
   const exchangeCurrencies = useMemo(() => {
-    return SUPPORTED_CURRENCIES.filter(c => c.code !== 'IRT_BANK');
+    // طبق درخواست کاربر، IRT_BANK به گزینه‌های تبادله اضافه شد
+    return SUPPORTED_CURRENCIES;
   }, []);
 
   const calculatedExchangeResult = useMemo(() => {
@@ -328,7 +328,7 @@ export default function CustomerManager({
                            <th className="py-5 px-4 text-right">نوع معامله</th>
                            <th className="py-5 px-4 text-center">مبلغ</th>
                            <th className="py-5 px-4 text-right">شرح معامله</th>
-                           <th className="py-5 px-8 text-left">وضعیت</th>
+                           <th className="py-5 px-8 text-left">مانده لحظه‌ای</th>
                         </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-50">
