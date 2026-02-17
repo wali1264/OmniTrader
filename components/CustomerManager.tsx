@@ -24,7 +24,10 @@ import {
   ShieldCheck,
   RotateCcw,
   Eye,
-  EyeOff
+  EyeOff,
+  CreditCard,
+  Landmark,
+  Hash
 } from 'lucide-react';
 
 const getSystemNow = () => Date.now();
@@ -327,8 +330,8 @@ export default function CustomerManager({
                            <th className="py-5 px-8 text-right">زمان</th>
                            <th className="py-5 px-4 text-right">نوع معامله</th>
                            <th className="py-5 px-4 text-center">مبلغ</th>
-                           <th className="py-5 px-4 text-right">شرح معامله</th>
-                           <th className="py-5 px-8 text-left">مانده لحظه‌ای</th>
+                           <th className="py-5 px-4 text-right">جزئیات و شرح معامله</th>
+                           <th className="py-5 px-8 text-left">وضعیت</th>
                         </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-50">
@@ -366,7 +369,7 @@ export default function CustomerManager({
                                     <div className={`p-1.5 rounded-lg ${t.type === TransactionType.RESID ? 'bg-emerald-50 text-emerald-600' : t.type === TransactionType.BOARD ? 'bg-rose-50 text-rose-600' : 'bg-blue-50 text-blue-600'}`}>
                                        {t.type === TransactionType.RESID ? <ArrowDownLeft size={14} /> : t.type === TransactionType.BOARD ? <ArrowUpRight size={14} /> : <ArrowRightLeft size={14} />}
                                     </div>
-                                    <span className="text-xs font-black text-slate-700">{t.type} {t.isBank ? '(بانکی)' : '(نقدی)'}</span>
+                                    <span className="text-xs font-black text-slate-700">{t.type}</span>
                                  </div>
                               </td>
                               <td className="py-6 px-4 text-center">
@@ -378,9 +381,38 @@ export default function CustomerManager({
                                  </div>
                               </td>
                               <td className="py-6 px-4">
-                                 <p className="text-[11px] font-bold text-slate-500 max-w-xs leading-relaxed italic">
-                                    {t.description || 'ثبت در سیستم'}
-                                 </p>
+                                 <div className="space-y-2">
+                                    {/* نمایش وضعیت بانکی مطابق درخواست */}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                       <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${t.isBank ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-slate-100 text-slate-500'}`}>
+                                          {t.isBank ? 'وارد شده بانکی' : 'نقدی'}
+                                       </span>
+                                       
+                                       {t.isBank && (
+                                          <>
+                                             {t.bankFrom && (
+                                                <span className="flex items-center gap-1 bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[9px] font-bold border border-slate-200">
+                                                   <Landmark size={10} className="text-slate-400" /> بانک مبدا: {t.bankFrom}
+                                                </span>
+                                             )}
+                                             {t.cardLastFour && (
+                                                <span className="flex items-center gap-1 bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md text-[9px] font-black border border-blue-100 tabular-nums">
+                                                   <CreditCard size={10} className="text-blue-400" /> کارت: **** {t.cardLastFour}
+                                                </span>
+                                             )}
+                                             {t.trackingId && (
+                                                <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md text-[9px] font-black border border-amber-100 tabular-nums">
+                                                   <Hash size={10} className="text-amber-400" /> سریال: {t.trackingId}
+                                                </span>
+                                             )}
+                                          </>
+                                       )}
+                                    </div>
+                                    
+                                    <p className="text-[11px] font-bold text-slate-500 max-w-xs leading-relaxed italic">
+                                       {t.description || 'ثبت در سیستم'}
+                                    </p>
+                                 </div>
                               </td>
                               <td className="py-6 px-8 text-left">
                                  <div className="flex items-center justify-end gap-2">
