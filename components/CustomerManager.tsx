@@ -32,6 +32,11 @@ import {
 
 const getSystemNow = () => Date.now();
 
+const getTodayString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 interface EnhancedCustomer extends Customer {
   lastLockedTimestamp?: number;
 }
@@ -61,7 +66,7 @@ export default function CustomerManager({
   // وضعیت برای مشاهده کامل تاریخچه (جهت رفع شک مشتری)
   const [auditMode, setAuditMode] = useState(false);
 
-  const [activeLedgerDate, setActiveLedgerDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [activeLedgerDate, setActiveLedgerDate] = useState<string>(getTodayString());
 
   const [newTrans, setNewTrans] = useState({ 
     amount: 0, 
@@ -204,6 +209,7 @@ export default function CustomerManager({
     setTransactions(prev => [...prev, transaction]);
     setTransModalState({ show: false, type: TransactionType.RESID });
     setNewTrans({ ...newTrans, amount: 0, description: '', exchangeRate: 0, currency: 'USD', targetCurrency: 'AFN' });
+    setActiveLedgerDate(getTodayString());
   };
 
   const changeLedgerDay = (offset: number) => {
@@ -294,7 +300,7 @@ export default function CustomerManager({
                 </div>
                 <div className="flex items-center gap-4 text-xs font-black">
                   {auditMode && <span className="text-amber-400 animate-pulse">در حال مشاهده تمام تاریخچه قبل از تصفیه...</span>}
-                  <button onClick={() => setActiveLedgerDate(new Date().toISOString().split('T')[0])} className="text-[10px] font-bold bg-blue-600 px-4 py-2 rounded-xl">امروز (صفحه جاری)</button>
+                  <button onClick={() => setActiveLedgerDate(getTodayString())} className="text-[10px] font-bold bg-blue-600 px-4 py-2 rounded-xl">امروز (صفحه جاری)</button>
                   <div className="h-6 w-px bg-white/10"></div>
                   <BookOpen size={20} className="text-slate-500" />
                 </div>
