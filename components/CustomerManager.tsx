@@ -69,13 +69,13 @@ export default function CustomerManager({
   const [activeLedgerDate, setActiveLedgerDate] = useState<string>(getTodayString());
 
   const [newTrans, setNewTrans] = useState({ 
-    amount: 0, 
+    amount: '' as string | number, 
     currency: 'USD', 
     description: '',
     targetCurrency: 'AFN',
-    exchangeRate: 0,
+    exchangeRate: '' as string | number,
     exchangeOp: 'multiply' as 'multiply' | 'divide',
-    netProfit: 0
+    netProfit: '' as string | number
   });
   
   const [newCustomer, setNewCustomer] = useState({ name: '', code: '', phone: '' });
@@ -86,10 +86,12 @@ export default function CustomerManager({
   }, []);
 
   const calculatedExchangeResult = useMemo(() => {
-    if (newTrans.amount <= 0 || newTrans.exchangeRate <= 0) return 0;
+    const amt = Number(newTrans.amount) || 0;
+    const rate = Number(newTrans.exchangeRate) || 0;
+    if (amt <= 0 || rate <= 0) return 0;
     return newTrans.exchangeOp === 'multiply' 
-      ? newTrans.amount * newTrans.exchangeRate 
-      : newTrans.amount / newTrans.exchangeRate;
+      ? amt * rate 
+      : amt / rate;
   }, [newTrans.amount, newTrans.exchangeRate, newTrans.exchangeOp]);
 
   const getCustomerAccounting = (customer: EnhancedCustomer) => {
@@ -187,12 +189,13 @@ export default function CustomerManager({
   };
 
   const handleAddTransaction = () => {
-    if (!selectedCustomer || newTrans.amount <= 0) return;
+    const amt = Number(newTrans.amount) || 0;
+    if (!selectedCustomer || amt <= 0) return;
     const transaction: Transaction = {
       id: 'TR-' + Math.random().toString(36).substr(2, 7).toUpperCase(),
       customerId: selectedCustomer.id,
       type: transModalState.type,
-      amount: Number(newTrans.amount),
+      amount: amt,
       currency: newTrans.currency,
       description: newTrans.description || `${transModalState.type} نقد`,
       timestamp: getSystemNow(),
@@ -201,14 +204,14 @@ export default function CustomerManager({
     };
     if (transModalState.type === TransactionType.EXCHANGE) {
       transaction.targetCurrency = newTrans.targetCurrency;
-      transaction.exchangeRate = newTrans.exchangeRate;
+      transaction.exchangeRate = Number(newTrans.exchangeRate) || 0;
       transaction.convertedAmount = calculatedExchangeResult;
-      transaction.netProfit = newTrans.netProfit;
+      transaction.netProfit = Number(newTrans.netProfit) || 0;
       transaction.description = newTrans.description || `تبادله ${newTrans.amount} ${newTrans.currency} به ${newTrans.targetCurrency} با نرخ ${newTrans.exchangeRate}`;
     }
     setTransactions(prev => [...prev, transaction]);
     setTransModalState({ show: false, type: TransactionType.RESID });
-    setNewTrans({ ...newTrans, amount: 0, description: '', exchangeRate: 0, currency: 'USD', targetCurrency: 'AFN' });
+    setNewTrans({ ...newTrans, amount: '', description: '', exchangeRate: '', currency: 'USD', targetCurrency: 'AFN', netProfit: '' });
     setActiveLedgerDate(getTodayString());
   };
 
@@ -551,7 +554,7 @@ export default function CustomerManager({
                   {/* مبلغ ارز مبدأ */}
                   <div className="space-y-2">
                      <label className="text-[11px] font-black text-slate-400 mr-2">مبلغ ارز مبدأ</label>
-                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-blue-600" placeholder="0.00" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-blue-600" placeholder="0.00" value={newTrans.amount} onChange={e => setNewTrans({...newTrans, amount: e.target.value})} />
                   </div>
 
                   {/* عملیات ضرب و تقسیم میانی */}
@@ -566,7 +569,7 @@ export default function CustomerManager({
                   {/* نرخ تبدیل ارز */}
                   <div className="space-y-2">
                      <label className="text-[11px] font-black text-slate-400 mr-2">نرخ تبدیل ارز</label>
-                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-slate-800" placeholder="0.0000" value={newTrans.exchangeRate || ''} onChange={e => setNewTrans({...newTrans, exchangeRate: Number(e.target.value)})} />
+                     <input type="number" className="w-full p-5 bg-white border border-slate-200 rounded-2xl font-black text-2xl text-center outline-none focus:border-blue-500 transition-all text-slate-800" placeholder="0.0000" value={newTrans.exchangeRate} onChange={e => setNewTrans({...newTrans, exchangeRate: e.target.value})} />
                   </div>
 
                   {/* بخش خروجی نهایی و سود */}
@@ -574,7 +577,7 @@ export default function CustomerManager({
                      <div className="bg-[#f0fdf4] p-5 rounded-2xl border border-emerald-100 text-center">
                         <p className="text-[10px] font-black text-emerald-600 uppercase mb-2">سود تبادله (AFN)</p>
                         <div className="flex items-center justify-center gap-1">
-                          <input type="number" className="w-full bg-transparent border-none text-center font-black text-xl text-emerald-700 outline-none" value={newTrans.netProfit || 0} onChange={e => setNewTrans({...newTrans, netProfit: Number(e.target.value)})} />
+                          <input type="number" className="w-full bg-transparent border-none text-center font-black text-xl text-emerald-700 outline-none" value={newTrans.netProfit} onChange={e => setNewTrans({...newTrans, netProfit: e.target.value})} />
                         </div>
                      </div>
                      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 text-center flex flex-col justify-center">
@@ -601,7 +604,7 @@ export default function CustomerManager({
                 <div className="space-y-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 mr-1 uppercase">مبلغ</label>
-                    <input type="number" className="w-full p-4 bg-slate-50 border rounded-xl text-right font-black outline-none focus:border-blue-500" placeholder="0" value={newTrans.amount || ''} onChange={e => setNewTrans({...newTrans, amount: Number(e.target.value)})} />
+                    <input type="number" className="w-full p-4 bg-slate-50 border rounded-xl text-right font-black outline-none focus:border-blue-500" placeholder="0" value={newTrans.amount} onChange={e => setNewTrans({...newTrans, amount: e.target.value})} />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 mr-1 uppercase">واحد پول</label>
